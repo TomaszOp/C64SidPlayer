@@ -14,7 +14,9 @@ wszystko; panel albo konsolę można wyłączyć (`USE_WEB`, `USE_CONSOLE`).
 | Katalog / plik | Co robi |
 |---|---|
 | `lib/Player/` | **biblioteka odtwarzacza**: wyjście audio I2S, pliki `.sid` z pamięci flash (LittleFS), sterowanie |
-| `lib/PlayerWeb/` | przykład: panel WWW dla telefonu i PC (klasa `PlayerWeb`, strona w `PlayerWebPage.h`) |
+| `lib/NvsSettings/` | wspólny mechanizm ustawień w pamięci NVS (lista pól w pliku `.def`, zapis tylko zmian) |
+| `lib/PlayerMemory/` | ustawienia odtwarzacza (klasa `PlayerMemory`, lista w `PlayerSettings.def`) |
+| `lib/PlayerWeb/` | przykład: panel WWW dla telefonu i PC (klasa `PlayerWeb`, skórki: `PlayerWebSkins.h`, strony `PlayerWebPage*.h`) |
 | `lib/PlayerConsole/` | przykład: komendy przez port szeregowy (klasa `PlayerConsole`, `DualSerial` dla USB+COM) |
 | `lib/SidEngine/` | emulacja C64: CPU 6510 (`cpu6502.*`), ładowanie PSID/RSID (`sidplayer.*`), układ SID (własny `sid.*` lub `resid/`) |
 | `src/main.cpp` | przykład: WiFi + Player + PlayerWeb + PlayerConsole |
@@ -46,6 +48,33 @@ void setup() {
 
 Metody zwracające `String` zwracają pusty napis przy powodzeniu, a w razie błędu jego opis.
 Pauza zatrzymuje muzykę w miejscu; wyciszenie tylko ścisza, a muzyka gra dalej.
+
+### Zapamiętane ustawienia (PlayerMemory)
+
+Głośność, wyciszenie, model SID, ostatni plik i podutwór oraz „graj po włączeniu”
+są zapisywane w pamięci NVS ESP32. Przetrwają wyłączenie zasilania i wgranie
+nowych plików przez „Upload Filesystem Image”. `main.cpp` co 5 s sprawdza, czy coś się
+zmieniło, i zapisuje tylko zmienione wartości, więc flash się nie zużywa.
+
+```cpp
+PlayerMemory mem;
+mem.load();            // brak zapisu = wartości domyślne
+mem.apply(player);     // głośność, wyciszenie, model SID -> odtwarzacz
+mem.capture(player);   // stan odtwarzacza -> ustawienia
+mem.save();            // zapisz tylko zmiany
+mem.setDefault(true);  // wartości domyślne i wyczyszczenie NVS
+```
+
+Każdy moduł ma własne ustawienia we własnej przestrzeni NVS: odtwarzacz w
+`lib/PlayerMemory/PlayerSettings.def`, panel WWW w `lib/PlayerWeb/WebSettings.def`
+(np. wybrana skórka; `PlayerWeb` sam je wczytuje i zapisuje). Wspólny mechanizm jest
+w `lib/NvsSettings` – opis, jak dodać własny zestaw ustawień, jest w `NvsSettings.h`.
+
+Nowe ustawienie odtwarzacza to jedna linia w `lib/PlayerMemory/PlayerSettings.def`, np.
+`SETTING(uint8_t, brightness, "bright", 50)`. Od razu jest dostępne jako `mem.brightness`,
+a odczyt, zapis, przywracanie wartości domyślnej i wypisywanie przez `mem` działają same.
+Gdy zmienisz typ istniejącego ustawienia, zwiększ wersję
+(`NVS_VERSION`) w `PlayerMemory.h`, a stary zapis zostanie pominięty.
 
 ## Silnik emulacji SID
 
@@ -99,6 +128,15 @@ GPIO25 → kondensator 10 µF → wejście wzmacniacza / słuchawki aktywne, GND
 
 Pliki SID: High Voltage SID Collection, https://www.hvsc.c64.org/
 
+### Wygląd strony (skórki)
+
+Na stronie, na liście „Wygląd”, wybierasz skórkę: **Nowoczesny** (domyślny) albo **Commodore 64**
+(ekran C64, czcionka terminalowa, lista plików jak `LOAD"$",8`). Wybór jest zapamiętany w NVS.
+Jeśli na komputerze lub telefonie zainstalujesz czcionkę „C64 Pro Mono”, skórka C64 użyje jej automatycznie.
+
+Nowa skórka: skopiuj `PlayerWebPageC64.h` pod nową nazwą i zmień nazwę tablicy, potem
+dopisz wartość do `enum WebSkin` w `PlayerWebSkins.h` i linię do `WEB_SKINS` w `PlayerWebSkins.cpp`.
+
 ### Komendy przez port szeregowy (115200)
 
 ```
@@ -111,6 +149,8 @@ vol 70 | + | -            głośność             m | mute  wycisz / włącz
 model 8580                wymuś model SID (auto / 6581 / 8580)
 del 3                     usuń plik
 info | ip | tone | ?      stan / adres IP / ton testowy / IP + pomoc
+mem | mem save | mem reset  zapamiętane ustawienia / zapisz teraz / domyślne
+auto on | off             graj ostatni plik po włączeniu zasilania
 ```
 
 ## Test na PC

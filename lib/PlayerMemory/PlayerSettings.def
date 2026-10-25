@@ -1,0 +1,19 @@
+// Lista zapamietywanych ustawien - jedna linia na ustawienie.
+//
+//   SETTING(typ, nazwa, klucz NVS, wartosc domyslna)
+//
+// Ustawienia samego odtwarzacza (biblioteka Player). Ustawienia panelu WWW sa
+// osobno, w lib/PlayerWeb/WebSettings.def.
+// Nowe ustawienie: dopisz linie ponizej, a pole PlayerMemory::nazwa oraz jego
+// odczyt, zapis i przywracanie domyslnej wartosci powstana same.
+// Dozwolone typy i zasady: zobacz lib/NvsSettings/NvsSettings.h.
+// Gdy zmienisz typ albo znaczenie istniejacego ustawienia, zwieksz
+// NVS_VERSION w PlayerMemory.h - stare zapisy zostana wtedy pominiete.
+
+//      typ      nazwa       klucz    domyslnie
+SETTING(uint8_t, volume,     "vol",   56)      // glosnosc 0..100
+SETTING(bool,    muted,      "mute",  false)   // wyciszenie
+SETTING(int8_t,  sidModel,   "model", -1)      // -1 auto, 0 = 6581, 1 = 8580
+SETTING(bool,    autoPlay,   "auto",  true)    // graj po wlaczeniu zasilania
+SETTING(String,  lastFile,   "file",  "")      // ostatnio grany plik
+SETTING(uint8_t, lastSong,   "song",  0)       // jego podutwor (0 = domyslny)

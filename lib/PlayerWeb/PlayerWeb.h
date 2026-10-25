@@ -10,11 +10,14 @@
 //
 // API (GET, odpowiedzi JSON): /api/status, /api/list, /api/play?file=X|index=N[&song=S],
 // /api/pause, /api/resume, /api/stop, /api/song?n=N|d=+-1, /api/file?d=+-1,
-// /api/volume?v=0..100, /api/mute[?on=0|1], /api/model?m=-1|0|1, /api/delete?file=X
+// /api/volume?v=0..100, /api/mute[?on=0|1], /api/model?m=-1|0|1, /api/delete?file=X,
+// /api/skins (lista skorek), /api/skin?s=<id|numer> (zmiana wygladu strony)
 // oraz POST /upload (multipart, pole "file").
 #pragma once
 #include <WebServer.h>
 #include "Player.h"
+#include "PlayerWebSkins.h"
+#include "WebSettings.h"
 
 class PlayerWeb {
 public:
@@ -25,11 +28,19 @@ public:
     void handle();                 // wywoluj czesto w loop()
     bool running() const { return running_; }
 
+    // wyglad strony (skorki w PlayerWebSkins.h), zapamietywany w NVS
+    WebSkin skin() const;
+    void setSkin(WebSkin skin);
+
+    // wlasne ustawienia panelu (WebSettings.def) - wczytywane w start()
+    WebSettings& settings() { return settings_; }
+
 private:
     void setupRoutes();
     void sendResult(const String& error);
     String statusJson();
     String listJson();
+    String skinsJson();
     void handleUploadData();
     void handleUploadDone();
 
@@ -39,4 +50,5 @@ private:
     bool routesReady_;
     String uploadName_;
     File uploadFile_;
+    WebSettings settings_;
 };

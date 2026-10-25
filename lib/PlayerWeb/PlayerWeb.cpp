@@ -1,5 +1,4 @@
 #include "PlayerWeb.h"
-#include "PlayerWebPage.h"
 
 // Napisy w plikach SID sa w ISO-8859-1; zamiana na UTF-8 z escapowaniem JSON.
 static String jsonStr(const String& s) {
@@ -27,7 +26,7 @@ PlayerWeb::PlayerWeb(Player& player, uint16_t port)
 
 void PlayerWeb::start() {
     if (running_) return;
-    if (!routesReady_) { setupRoutes(); routesReady_ = true; }
+    if (!routesReady_) { setupRoutes(); routesReady_ = true; settings_.load(); }
     server_.begin();
     running_ = true;
 }
@@ -40,6 +39,15 @@ void PlayerWeb::stop() {
 
 void PlayerWeb::handle() {
     if (running_) server_.handleClient();
+}
+
+WebSkin PlayerWeb::skin() const {
+    return settings_.skin < WEB_SKIN_COUNT ? WebSkin(settings_.skin) : WebSkin::Modern;
+}
+
+void PlayerWeb::setSkin(WebSkin skin) {
+    settings_.skin = uint8_t(skin) < WEB_SKIN_COUNT ? uint8_t(skin) : 0;
+    settings_.save();
 }
 
 void PlayerWeb::sendResult(const String& error) {
@@ -70,6 +78,7 @@ String PlayerWeb::statusJson() {
     j += ",\"engine\":" + jsonStr(s.engine);
     j += ",\"load\":" + String(s.cpuLoad);
     j += ",\"freeFs\":" + String(player_.freeSpace());
+    j += ",\"skin\":" + jsonStr(WEB_SKINS[uint8_t(skin())].id);
     return j + "}";
 }
 
@@ -84,8 +93,25 @@ String PlayerWeb::listJson() {
     return j + "]";
 }
 
+String PlayerWeb::skinsJson() {
+    String j = "{\"current\":" + jsonStr(WEB_SKINS[uint8_t(skin())].id) + ",\"skins\":[";
+    for (uint8_t i = 0; i < WEB_SKIN_COUNT; i++) {
+        if (i) j += ",";
+        j += "{\"id\":" + jsonStr(WEB_SKINS[i].id) + ",\"name\":" + jsonStr(WEB_SKINS[i].name) + "}";
+    }
+    return j + "]}";
+}
+
 void PlayerWeb::setupRoutes() {
-    server_.on("/", HTTP_GET, [this] { server_.send_P(200, "text/html", PLAYER_WEB_PAGE); });
+    server_.on("/", HTTP_GET, [this] { server_.send_P(200, "text/html", WEB_SKINS[uint8_t(skin())].page); });
+    server_.on("/api/skins", HTTP_GET, [this] { server_.send(200, "application/json", skinsJson()); });
+    server_.on("/api/skin", HTTP_GET, [this] {
+        // ?s=c64 albo ?s=1
+        String s = server_.arg("s");
+        for (uint8_t i = 0; i < WEB_SKIN_COUNT; i++)
+            if (s == WEB_SKINS[i].id || s == String(i)) { setSkin(WebSkin(i)); sendResult(""); return; }
+        sendResult("nieznana skorka: " + s);
+    });
     server_.on("/api/status", HTTP_GET, [this] { server_.send(200, "application/json", statusJson()); });
     server_.on("/api/list", HTTP_GET, [this] { server_.send(200, "application/json", listJson()); });
     server_.on("/api/play", HTTP_GET, [this] {

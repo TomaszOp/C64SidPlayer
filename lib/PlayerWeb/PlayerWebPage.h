@@ -1,4 +1,5 @@
-// Strona WWW panelu odtwarzacza (HTML + CSS + JS w jednym napisie).
+// Skorka domyslna "Nowoczesny": strona WWW panelu odtwarzacza (HTML + CSS + JS w jednym napisie).
+// Inne skorki: PlayerWebSkins.h.
 // Komunikuje sie z PlayerWeb przez /api/... (JSON).
 #pragma once
 #include <pgmspace.h>
@@ -81,6 +82,7 @@ li .del{background:transparent;border:1px solid var(--accent)}
   <div class="vol"><span>&#128264;</span><input type="range" id="vol" min="0" max="100"><span id="volv"></span></div>
   <div class="row" style="margin-top:12px"><span>Układ SID</span>
    <select id="model"><option value="-1">automatycznie</option><option value="0">6581 (stary)</option><option value="1">8580 (nowy)</option></select></div>
+ <div class="row" style="margin-top:8px"><span>Wygląd</span><select id="skin"></select></div>
  </section>
 
  <section class="card">
@@ -151,6 +153,11 @@ $('prev').onclick=()=>api('song?d=-1');
 $('next').onclick=()=>api('song?d=1');
 let vt;$('vol').oninput=e=>{$('volv').textContent=e.target.value+'%';clearTimeout(vt);vt=setTimeout(()=>api('volume?v='+e.target.value),120)};
 $('model').onchange=e=>api('model?m='+e.target.value);
+async function loadSkins(){
+ try{const s=await (await fetch('/api/skins')).json();
+  $('skin').innerHTML=s.skins.map(k=>`<option value="${esc(k.id)}">${esc(k.name)}</option>`).join('');$('skin').value=s.current}catch(e){}
+}
+$('skin').onchange=async e=>{await api('skin?s='+encodeURIComponent(e.target.value));location.reload()};
 
 // --- wgrywanie ---
 const drop=$('drop'),fin=$('fileIn');
@@ -180,5 +187,5 @@ async function upload(list){
   (skip?`Pominięto ${skip} (nie .sid). `:'')+errs.map(e=>'<div class=err>'+esc(e)+'</div>').join('');
  loadList();refresh();
 }
-loadList();refresh();setInterval(refresh,1000);
+loadSkins();loadList();refresh();setInterval(refresh,1000);
 </script></body></html>)HTML";

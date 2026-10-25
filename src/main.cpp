@@ -2,6 +2,7 @@
 //
 //   lib/SidEngine      emulacja C64 (CPU 6510) i ukladu SID (wlasny silnik lub reSID)
 //   lib/Player         biblioteka odtwarzacza: audio I2S, pliki z flash, sterowanie
+//   lib/PlayerMemory   ustawienia zapamietywane w NVS (glosnosc, model SID, ostatni plik...)
 //   lib/PlayerWeb      przyklad: panel WWW (telefon / PC)
 //   lib/PlayerConsole  przyklad: komendy przez port szeregowy (COM)
 //
@@ -11,15 +12,18 @@
 #include <ESPmDNS.h>
 #include "config.h"
 #include <Player.h>
+#include <PlayerMemory.h>
 #include <PlayerWeb.h>
 #include <PlayerConsole.h>
 #include <DualSerial.h>
 
 #define USE_WEB      1
 #define USE_CONSOLE  1
+#define SAVE_EVERY_MS 5000   // co ile sprawdzac, czy ustawienia sie zmienily (oszczedza flash)
 
 static DualSerial Console;
 static Player player;
+static PlayerMemory memory;
 #if USE_WEB
 static PlayerWeb web(player);
 #endif
@@ -65,17 +69,25 @@ void setup() {
     if (!player.begin(cfg)) Console.println("Uwaga: problem z wyjsciem audio albo pamiecia plikow (LittleFS)");
     Console.printf("Silnik SID: %s, audio: %s\n", player.status().engine, player.audioError());
 
+    // zapamietane ustawienia (pierwsze uruchomienie: wartosci z PlayerSettings.def)
+    Console.println(memory.load() ? "Wczytano zapamietane ustawienia" : "Ustawienia domyslne");
+    memory.apply(player);
+
 #if USE_WEB
     connectWiFi();
     web.start();
 #endif
 
-    // automatycznie zagraj pierwszy plik z pamieci
-    if (player.fileCount() > 0) {
-        String e = player.playIndex(1);
+    // po wlaczeniu zagraj ostatnio grany plik, a gdy go nie ma - pierwszy z pamieci
+    if (memory.autoPlay && player.fileCount() > 0) {
+        String e = "brak pliku";
+        if (memory.lastFile.length() && player.fileIndex(memory.lastFile))
+            e = player.play(memory.lastFile, memory.lastSong);
+        if (e.length()) e = player.playIndex(1);
         if (e.length()) Console.println("blad: " + e);
     }
 #if USE_CONSOLE
+    console.setMemory(&memory);
     console.start();
     console.printStatus();
 #endif
@@ -88,5 +100,12 @@ void loop() {
 #if USE_CONSOLE
     console.handle();
 #endif
+    // zmiany z WWW i konsoli zapisuj co kilka sekund, i tylko gdy cos sie zmienilo
+    static uint32_t lastSave = 0;
+    if (millis() - lastSave > SAVE_EVERY_MS) {
+        lastSave = millis();
+        memory.capture(player);
+        memory.save();
+    }
     delay(2);
 }

@@ -1,5 +1,6 @@
 #include "PlayerConsole.h"
 #include <WiFi.h>
+#include "PlayerMemory.h"
 
 PlayerConsole::PlayerConsole(Player& player, Stream& io)
     : player_(player), io_(io), running_(false) {}
@@ -108,12 +109,34 @@ void PlayerConsole::execute(const String& line) {
         printStatus();
     } else if (cmd == "ip") {
         printIp();
+    } else if ((cmd == "mem" || cmd == "auto") && memory_) {
+        memoryCommand(cmd, arg);
     } else if (cmd == "?") {
         printIp();
         printHelp();
     } else {
         printHelp();
     }
+}
+
+void PlayerConsole::memoryCommand(const String& cmd, const String& arg) {
+    PlayerMemory& mem = *memory_;
+    if (cmd == "auto") {
+        if (arg == "on" || arg == "1") mem.autoPlay = true;
+        else if (arg == "off" || arg == "0") mem.autoPlay = false;
+        else mem.autoPlay = !mem.autoPlay;
+        io_.println(mem.autoPlay ? "granie po wlaczeniu: tak" : "granie po wlaczeniu: nie");
+    } else if (arg == "reset") {
+        mem.setDefault(true);
+        mem.apply(player_);
+        io_.println("przywrocono ustawienia domyslne");
+    } else if (arg != "save" && arg.length()) {
+        io_.println("mem | mem save | mem reset");
+        return;
+    }
+    mem.capture(player_);
+    io_.println(mem.save() ? "ustawienia zapisane:" : "blad zapisu ustawien:");
+    mem.print(io_);
 }
 
 void PlayerConsole::printHelp() {
@@ -128,6 +151,10 @@ void PlayerConsole::printHelp() {
         "  model <auto|6581|8580>   model ukladu SID\n"
         "  del <nr|nazwa>           usun plik\n"
         "  info | ip | tone | ?");
+    if (memory_)
+        io_.println(
+        "  mem [save|reset]         zapamietane ustawienia / zapisz / domyslne\n"
+        "  auto [on|off]            graj ostatni plik po wlaczeniu zasilania");
 }
 
 void PlayerConsole::printIp() {

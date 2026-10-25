@@ -10,6 +10,8 @@
 #include <Arduino.h>
 #include "Player.h"
 
+class PlayerMemory;
+
 class PlayerConsole {
 public:
     PlayerConsole(Player& player, Stream& io);
@@ -18,6 +20,8 @@ public:
     void stop();
     void handle();                  // wywoluj czesto w loop()
     bool running() const { return running_; }
+    // opcjonalnie: komendy "mem" i "auto" do zapamietanych ustawien
+    void setMemory(PlayerMemory* memory) { memory_ = memory; }
 
     void printStatus();
     void printHelp();
@@ -25,6 +29,7 @@ public:
 
 private:
     void execute(const String& line);
+    void memoryCommand(const String& cmd, const String& arg);
     void report(const String& error, bool showStatus = true);
     String fileArg(const String& arg);
 
@@ -32,4 +37,5 @@ private:
     Stream& io_;
     bool running_;
     String line_;
+    PlayerMemory* memory_ = nullptr;
 };
