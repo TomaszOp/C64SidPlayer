@@ -26,6 +26,8 @@ public:
     void printStatus();
     void printHelp();
     void printIp();
+    void printList();
+    void printSources();
 
 private:
     void execute(const String& line);

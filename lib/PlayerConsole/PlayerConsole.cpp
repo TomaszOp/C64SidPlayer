@@ -48,13 +48,23 @@ void PlayerConsole::execute(const String& line) {
     cmd.toLowerCase();
 
     if (cmd == "list" || cmd == "ls") {
-        std::vector<PlayerFile> list = player_.files();
-        String current = player_.status().file;
-        for (size_t i = 0; i < list.size(); i++)
-            io_.printf("%c%2u. %s (%u B)\n", list[i].name == current ? '*' : ' ',
-                       unsigned(i + 1), list[i].name.c_str(), unsigned(list[i].size));
-        if (list.empty()) io_.println("brak plikow - wgraj je przez strone WWW");
-        io_.printf("wolne miejsce: %u B\n", unsigned(player_.freeSpace()));
+        printList();
+    } else if (cmd == "src" || cmd == "source") {
+        if (arg.length()) {
+            const SourceInfo* info = sourceInfo(arg);
+            if (!info) { io_.println("blad: nieznane zrodlo " + arg); printSources(); return; }
+            String e = player_.setSource(info->type);
+            if (e.length()) io_.println("uwaga: " + e);
+            printList();
+        } else {
+            printSources();
+        }
+    } else if (cmd == "cd") {
+        String e = player_.cd(arg);
+        if (e.length()) io_.println("blad: " + e);
+        else printList();
+    } else if (cmd == "pwd") {
+        io_.printf("%s:%s\n", player_.sourceInfo().id, player_.dir().c_str());
     } else if (cmd == "play") {
         if (!arg.length()) { player_.resume(); report(""); return; }
         int song = 0;
@@ -139,14 +149,47 @@ void PlayerConsole::memoryCommand(const String& cmd, const String& arg) {
     mem.print(io_);
 }
 
+void PlayerConsole::printSources() {
+    io_.println("zrodla plikow (src <nazwa>):");
+    for (uint8_t i = 0; i < PLAYER_SOURCE_COUNT; i++) {
+        const SourceInfo& s = PLAYER_SOURCES[i];
+        bool active = s.type == player_.source();
+        SidSource* impl = sourceImpl(s.type);
+        bool ready = impl && impl->ready();
+        io_.printf("%c %-6s %s%s%s, folder %s\n", active ? '*' : ' ', s.id, s.name,
+                   ready ? "" : " - niedostepne: ", ready ? "" : impl->error(),
+                   player_.dir(s.type).c_str());
+    }
+}
+
+void PlayerConsole::printList() {
+    player_.refreshFiles();
+    const std::vector<PlayerFile>& list = player_.files();
+    PlayerStatus st = player_.status();
+    io_.printf("%s:%s\n", player_.sourceInfo().id, player_.dir().c_str());
+    if (!player_.sourceReady()) { io_.println("blad: " + player_.sourceError()); return; }
+    if (player_.dir() != "/") io_.println("      [..]  (cd ..)");
+    int n = 0;
+    for (const PlayerFile& f : list) {
+        if (f.dir) { io_.printf("      [%s]\n", f.name.c_str()); continue; }
+        bool current = st.fileSource == st.source && player_.path(f.name) == st.file;
+        io_.printf("%c%4d. %s (%u B)\n", current ? '*' : ' ', ++n, f.name.c_str(), unsigned(f.size));
+    }
+    if (list.empty()) io_.println(player_.uploadAllowed() ? "pusty folder - wgraj pliki przez strone WWW" : "pusty folder");
+    if (player_.filesTruncated()) io_.printf("(pokazano tylko %u pozycji)\n", unsigned(Player::MAX_LIST));
+    io_.printf("wolne miejsce: %u KB\n", unsigned(player_.freeSpace() / 1024));
+}
+
 void PlayerConsole::printHelp() {
     io_.println(
         "komendy:\n"
-        "  list                     lista plikow (* = biezacy)\n"
+        "  ls | list                folder: [podfoldery] i pliki (* = biezacy)\n"
+        "  cd <folder> | cd .. | cd /   zmien folder      pwd  biezacy folder\n"
+        "  src [flash|sd|deepsid]   zrodla plikow / zmien zrodlo\n"
         "  play <nr|nazwa> [utwor]  graj plik     play     wznow\n"
         "  p | pause                pauza / wznow  stop      zatrzymaj\n"
         "  n | next, b | prev       nastepny / poprzedni podutwor   song <n>\n"
-        "  > | nfile, < | pfile     nastepny / poprzedni plik\n"
+        "  > | nfile, < | pfile     nastepny / poprzedni plik w folderze\n"
         "  vol <0-100> | + | -      glosnosc       m | mute  wycisz / wlacz\n"
         "  model <auto|6581|8580>   model ukladu SID\n"
         "  del <nr|nazwa>           usun plik\n"
@@ -173,6 +216,8 @@ void PlayerConsole::printStatus() {
                c.pinBck, c.pinWs, c.pinData, s.volume, s.muted ? ", WYCISZONE" : "",
                s.testTone ? ", ton testowy" : "");
     io_.printf("silnik SID: %s, obciazenie CPU audio: %u%%\n", s.engine, s.cpuLoad);
+    io_.printf("zrodlo: %s, folder %s%s\n", player_.sourceInfo().name, s.dir.c_str(),
+               player_.sourceReady() ? "" : (" - " + player_.sourceError()).c_str());
     if (!s.loaded) { io_.println("nic nie jest wczytane"); return; }
     const char* st = s.state == PlayerState::Playing ? "PLAY" : s.state == PlayerState::Paused ? "PAUZA" : "STOP";
     io_.printf("%s %s | %s | %s | %s\n", st, s.file.c_str(), s.title.c_str(), s.author.c_str(), s.released.c_str());

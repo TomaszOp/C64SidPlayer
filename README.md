@@ -13,7 +13,7 @@ wszystko; panel albo konsolę można wyłączyć (`USE_WEB`, `USE_CONSOLE`).
 
 | Katalog / plik | Co robi |
 |---|---|
-| `lib/Player/` | **biblioteka odtwarzacza**: wyjście audio I2S, pliki `.sid` z pamięci flash (LittleFS), sterowanie |
+| `lib/Player/` | **biblioteka odtwarzacza**: wyjście audio I2S, źródła plików (`SidSource.h`: flash, karta SD, DeepSID) z folderami, sterowanie |
 | `lib/NvsSettings/` | wspólny mechanizm ustawień w pamięci NVS (lista pól w pliku `.def`, zapis tylko zmian) |
 | `lib/PlayerMemory/` | ustawienia odtwarzacza (klasa `PlayerMemory`, lista w `PlayerSettings.def`) |
 | `lib/PlayerWeb/` | przykład: panel WWW dla telefonu i PC (klasa `PlayerWeb`, skórki: `PlayerWebSkins.h`, strony `PlayerWebPage*.h`) |
@@ -34,7 +34,9 @@ void setup() {
     PlayerConfig cfg;                 // piny I2S, częstotliwość, głośność...
     cfg.pinBck = 4; cfg.pinWs = 5; cfg.pinData = 6;
     player.begin(cfg);
-    player.play("Commando.sid");      // albo player.playIndex(1)
+    player.setSource(SourceType::SdCard);   // źródło plików (domyślnie pamięć flash)
+    player.cd("Hubbard");                   // folder; ".." = poziom wyżej
+    player.play("Commando.sid");            // albo playIndex(1) albo "/Hubbard/Commando.sid"
 }
 ```
 
@@ -43,7 +45,9 @@ void setup() {
 | odtwarzanie | `play(nazwa, utwór)`, `playIndex(n)`, `nextFile()`, `prevFile()`, `stop()`, `pause()`, `resume()`, `togglePause()` |
 | podutwory | `setSong(n)`, `nextSong()`, `prevSong()`, `restartSong()` |
 | dźwięk | `setVolume(0-100)`, `volumeUp()`, `volumeDown()`, `setMute()`, `toggleMute()`, `setModel(-1/0/1)`, `setTestTone()` |
-| pliki | `files()`, `fileCount()`, `fileName(n)`, `removeFile(nazwa)`, `freeSpace()`, `fs()`, `sanitizeName()` |
+| źródła | `setSource(typ)`, `source()`, `sourceInfo()`, `sourceReady()`, `sourceError()`, `activeSource()` |
+| foldery | `cd(folder)`, `dir()`, `dir(typ)`, `setDir(typ, folder)` – każde źródło pamięta swój folder |
+| pliki | `files()` (foldery + pliki), `fileCount()`, `fileName(n)`, `removeFile(nazwa)`, `freeSpace()`, `uploadAllowed()`, `prepareUpload()`, `sanitizeName()` |
 | stan | `status()` (tytuł, autor, utwór, czas, głośność, obciążenie CPU...), `state()`, `isPlaying()`, `audioError()` |
 
 Metody zwracające `String` zwracają pusty napis przy powodzeniu, a w razie błędu jego opis.
@@ -128,6 +132,57 @@ GPIO25 → kondensator 10 µF → wejście wzmacniacza / słuchawki aktywne, GND
 
 Pliki SID: High Voltage SID Collection, https://www.hvsc.c64.org/
 
+### Źródła plików i foldery
+
+Pliki `.sid` mogą być w **pamięci flash** (LittleFS, zawsze dostępna) albo na **karcie SD**
+(włączana flagą `-DPLAYER_SOURCE_SD=1` w `platformio.ini`; w środowisku S3 jest włączona).
+Oba źródła obsługują foldery – np. całą kolekcję HVSC wystarczy skopiować na kartę.
+Trzecie źródło, **DeepSid**, pobiera kolekcję HVSC z portalu https://deepsid.chordian.net
+przez internet (flaga `-DPLAYER_SOURCE_DEEPSID=1`, opis niżej).
+
+- Na stronie wybierasz źródło z listy „Źródło”, foldery są oznaczone ikoną 📁, „..” to poziom wyżej.
+- Następny / poprzedni plik działa tylko w bieżącym folderze.
+- Wgrywany plik trafia do bieżącego folderu, jeśli źródło na to pozwala.
+- Zapamiętywane są: aktywne źródło oraz folder, ostatni plik i podutwór dla każdego źródła.
+- Duże foldery są wysyłane na stronę w porcjach po 100 („Pokaż więcej”), najwyżej 1000 pozycji w folderze.
+- Na flash cała ścieżka może mieć najwyżej ok. 63 znaki. Foldery na flash tworzysz w katalogu `data/` przed `uploadfs`.
+
+Co wolno w danym źródle, ustawiasz w tablicy `PLAYER_SOURCES` w `lib/Player/PlayerSources.cpp`:
+
+```cpp
+//  typ                  id       opis            upload
+{SourceType::Flash,  "flash", "Pamiec flash", true},
+{SourceType::SdCard, "sd",    "Karta SD",     true},
+{SourceType::DeepSid, "deepsid", "DeepSid",   false},
+```
+
+**DeepSid (internet)** – włączane flagą `-DPLAYER_SOURCE_DEEPSID=1` w `platformio.ini`
+(w środowisku S3 jest włączone). Wymaga połączenia z WiFi (w trybie punktu dostępowego
+źródło jest niedostępne).
+
+- Lista folderu pochodzi z publicznego REST API DeepSID (`/api/v1/?folder=…` i `?file=…`),
+  pokazywane są tylko podfoldery i pliki `.sid`. Plik jest pobierany przy odtwarzaniu, jak na stronie DeepSID.
+- Ścieżki są takie jak w HVSC, np. `/MUSICIANS/H/Hubbard_Rob/Commando.sid`.
+- Folder, ostatni plik i podutwór są zapamiętywane tak samo jak dla flash i karty SD.
+- Źródło jest tylko do odczytu: bez wgrywania i usuwania plików.
+- Folder `/MUSICIANS` wczytuje się kilka–kilkanaście sekund (API zwraca wszystkie jego podfoldery).
+- Połączenie HTTPS jest bez sprawdzania certyfikatu (pliki są publiczne).
+
+Nowe źródło: wartość w `enum SourceType`, klasa pochodna `SidSource`,
+pozycja w `PLAYER_SOURCES` i `sourceImpl()`, pola w `PlayerSettings.def` – opis w `SidSource.h`.
+
+**Karta SD (moduł SPI)** – piny w `include/config.h` (`SD_PIN_*`):
+
+| Moduł SD | ESP32-S3 | ESP32 |
+|---|---|---|
+| CS | GPIO10 | GPIO5 |
+| MOSI | GPIO11 | GPIO23 |
+| SCK / CLK | GPIO12 | GPIO18 |
+| MISO | GPIO13 | GPIO19 |
+| VCC / GND | 3V3 (5V, jeśli moduł ma stabilizator) / GND | jw. |
+
+Karta musi być sformatowana w FAT32. Jeśli karta nie działa, zmniejsz `SD_SPI_FREQ` w `config.h`.
+
 ### Wygląd strony (skórki)
 
 Na stronie, na liście „Wygląd”, wybierasz skórkę: **Nowoczesny** (domyślny) albo **Commodore 64**
@@ -140,11 +195,13 @@ dopisz wartość do `enum WebSkin` w `PlayerWebSkins.h` i linię do `WEB_SKINS` 
 ### Komendy przez port szeregowy (115200)
 
 ```
-list                      lista plików (* = bieżący)
+ls | list                 folder: [podfoldery] i pliki (* = bieżący)
+cd Hubbard | cd .. | cd / zmień folder        pwd   bieżący folder
+src | src sd | src deepsid  źródła plików / zmień źródło
 play 2 | play Commando.sid 3   graj plik (i podutwór);  play  wznów
 p | pause                 pauza / wznów        stop     zatrzymaj
 n | next,  b | prev       następny / poprzedni podutwór    song 4
-> | nfile, < | pfile      następny / poprzedni plik
+> | nfile, < | pfile      następny / poprzedni plik w folderze
 vol 70 | + | -            głośność             m | mute  wycisz / włącz
 model 8580                wymuś model SID (auto / 6581 / 8580)
 del 3                     usuń plik

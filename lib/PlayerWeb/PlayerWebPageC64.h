@@ -51,6 +51,7 @@ li .n{flex:1;min-width:0;cursor:pointer;white-space:nowrap;overflow:hidden;text-
 li.on .n{background:var(--txt);color:var(--scr)}
 li button{min-width:6ch}
 li .del{background:transparent;color:var(--txt);border:2px solid var(--txt)}
+li .t{min-width:4ch}
 #msg{min-height:1.3em;margin-top:10px}
 .err{color:var(--err)}
 .cur{display:inline-block;width:.8em;height:1.05em;background:var(--txt);vertical-align:text-bottom;animation:bl 1s steps(1) infinite}
@@ -83,17 +84,19 @@ li .del{background:transparent;color:var(--txt);border:2px solid var(--txt)}
 
  <div class="gap"></div>
  <p>READY.</p>
- <p>SAVE"*.SID",8</p>
+ <p id="save" class="wrap">SAVE"*.SID",8</p>
  <div id="drop" tabindex="0">DOTKNIJ ALBO UPUSC TU PLIKI .SID</div>
  <input type="file" id="fileIn" multiple>
  <div id="bar"><i id="barI"></i></div>
 
  <div class="gap"></div>
  <p>READY.</p>
- <p>LOAD"$",8</p>
+ <p id="loaddir">LOAD"$",8</p>
+ <div class="ln" id="srcRow"><span>DRIVE</span><select id="src"></select></div>
  <div class="ln"><span>FIND</span><input id="search" type="search" placeholder="NAZWA..." autocomplete="off"></div>
- <p style="margin-top:8px">0 <span style="background:var(--txt);color:var(--scr)">"C64 SID PLAYER  " 64 2A</span></p>
+ <p style="margin-top:8px" class="wrap">0 <span id="hdr" style="background:var(--txt);color:var(--scr)"></span></p>
  <ul id="list"></ul>
+ <button id="more" style="width:100%;margin-top:6px;display:none">MORE</button>
  <p id="blocks"></p>
  <p id="msg"></p>
  <p>READY.</p>
@@ -101,7 +104,7 @@ li .del{background:transparent;color:var(--txt);border:2px solid var(--txt)}
 </div>
 <script>
 const $=id=>document.getElementById(id);
-let st={},files=[],msgT;
+let st={},files=[],msgT,li={},listKey='',sources=[];
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const blk=b=>Math.ceil((b||0)/254);
 const fmt=ms=>{const s=Math.floor((ms||0)/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
@@ -123,30 +126,60 @@ async function refresh(){
  $('prev').disabled=$('next').disabled=!has||st.songs<2;
  if(document.activeElement!==$('vol')){$('vol').value=st.volume;$('volv').textContent=st.volume}
  $('model').value=st.modelSetting;
- if(st.freeFs!=null){$('free').textContent=Math.floor(st.freeFs/254);$('blocks').textContent=Math.floor(st.freeFs/254)+' BLOCKS FREE.'}
- document.querySelectorAll('#list li').forEach(li=>li.classList.toggle('on',li.dataset.f===st.file));
+ if(st.freeFs!=null){const fb=Math.min(65535,Math.floor(st.freeFs/254));$('free').textContent=fb;$('blocks').textContent=fb+' BLOCKS FREE.'}
+ else{$('free').textContent='0';$('blocks').textContent=''}
+ document.querySelectorAll('#list li').forEach(l=>l.classList.toggle('on',st.fileSource===st.source&&l.dataset.f===st.file));
+ if(st.source&&st.source+':'+st.dir!==listKey){listKey=st.source+':'+st.dir;loadList()}
 }
-async function loadList(){
- try{files=await (await fetch('/api/list')).json()}catch(e){return}
+// lista biezacego folderu, w porcjach po 100
+async function loadList(more){
+ let j;try{j=await (await fetch('/api/list?count=100&offset='+(more?files.length:0))).json()}catch(e){return}
+ files=more?files.concat(j.items):j.items;li=j;listKey=j.source+':'+j.dir;
+ if(!more)$('search').value='';
  render();
 }
+const full=n=>(li.dir==='/'?'/':li.dir+'/')+n;
+// numer stacji jak w C64: 8 = pamiec flash, 9 = karta SD...
+const drive=id=>8+Math.max(0,sources.findIndex(s=>s.id===id));
 function render(){
  const q=$('search').value.toLowerCase();
- const l=files.filter(f=>f.name.toLowerCase().includes(q)).sort((a,b)=>a.name.localeCompare(b.name));
- $('list').innerHTML=l.map(f=>`<li data-f="${esc(f.name)}" class="${f.name===st.file?'on':''}">
-  <span class="b">${blk(f.size)}</span><span class="n" data-act="play">"${esc(f.name.replace(/\.sid$/i,'').replace(/_/g,' '))}" SID</span>
-  <button data-act="play" title="Graj">RUN</button><button class="del" data-act="del" title="Usun">DEL</button></li>`).join('')
-  ||'<li class="dim">BRAK PLIKOW - WGRAJ PIERWSZY .SID</li>';
+ const l=files.filter(f=>f.name.toLowerCase().includes(q));
+ const dv=drive(li.source);
+ $('loaddir').textContent=`LOAD"$${li.dir&&li.dir!=='/'?':'+li.dir:''}",${dv}`;
+ $('hdr').textContent=`"${(li.source||'')+':'+(li.dir||'/')}" ${dv} 2A`;
+ let h=li.dir&&li.dir!=='/'?'<li data-act="up"><span class="b">0</span><span class="n" data-act="up">".."</span><span class="t">DIR</span></li>':'';
+ h+=l.map(f=>f.dir?`<li data-d="${esc(f.name)}"><span class="b">0</span><span class="n" data-act="cd">"${esc(f.name)}"</span><span class="t">DIR</span>
+  <button data-act="cd" title="Otworz">CD</button></li>`
+  :`<li data-f="${esc(full(f.name))}" class="${st.fileSource===st.source&&full(f.name)===st.file?'on':''}">
+  <span class="b">${blk(f.size)}</span><span class="n" data-act="play">"${esc(f.name.replace(/\.sid$/i,'').replace(/_/g,' '))}"</span><span class="t">SID</span>
+  <button data-act="play" title="Graj">RUN</button>${li.del?'<button class="del" data-act="del" title="Usun">DEL</button>':''}</li>`).join('');
+ if(li.ready===false)h+=`<li class="err">?${esc((li.error||'DEVICE NOT PRESENT').toUpperCase())} ERROR</li>`;
+ else if(!files.length)h+='<li class="dim">PUSTY FOLDER</li>';
+ $('list').innerHTML=h;
+ $('more').style.display=files.length<li.total?'block':'none';
+ $('more').textContent=`MORE (${files.length}/${li.total})`;
+ $('drop').style.display=li.upload?'block':'none';
+ $('save').textContent=li.upload?`SAVE"${li.dir==='/'?'':li.dir+'/'}*.SID",${dv}`:'?WRITE PROTECT ERROR (WGRYWANIE WYLACZONE)';
 }
+async function loadSources(){
+ try{const j=await (await fetch('/api/sources')).json();sources=j.sources;
+  $('src').innerHTML=sources.map((s,i)=>`<option value="${esc(s.id)}">${8+i}: ${esc(s.name)}${s.ready?'':' (BRAK)'}</option>`).join('');
+  $('src').value=j.current;$('srcRow').style.display=sources.length>1?'flex':'none';render()}catch(e){}
+}
+$('src').onchange=e=>api('source?s='+encodeURIComponent(e.target.value)).then(loadSources);
+$('more').onclick=()=>loadList(true);
 async function loadSkins(){
  try{const s=await (await fetch('/api/skins')).json();
   $('skin').innerHTML=s.skins.map(k=>`<option value="${esc(k.id)}">${esc(k.name)}</option>`).join('');$('skin').value=s.current}catch(e){}
 }
 $('skin').onchange=async e=>{await api('skin?s='+encodeURIComponent(e.target.value));location.reload()};
 $('list').onclick=e=>{
- const a=e.target.closest('[data-act]');if(!a)return;const f=a.closest('li').dataset.f;if(!f)return;
- if(a.dataset.act==='play')api('play?file='+encodeURIComponent(f));
- else if(confirm('SCRATCH "'+f+'"?'))api('delete?file='+encodeURIComponent(f)).then(loadList);
+ const a=e.target.closest('[data-act]');if(!a)return;const r=a.closest('li'),act=a.dataset.act;
+ if(act==='up')return api('cd?dir=..');
+ if(act==='cd')return api('cd?dir='+encodeURIComponent(r.dataset.d));
+ const f=r.dataset.f;if(!f)return;
+ if(act==='play')api('play?file='+encodeURIComponent(f));
+ else if(confirm('SCRATCH "'+f+'"?'))api('delete?file='+encodeURIComponent(f)).then(()=>loadList());
 };
 $('search').oninput=render;
 $('pp').onclick=()=>st.loaded?api('pause'):(files.length?api('play?index=1'):msg('FILE NOT FOUND',1));
@@ -186,5 +219,5 @@ async function upload(list){
  if(errs.length)msg(errs.join(' / '),1);else msg(`ZAPISANO ${ok}${skip?', POMINIETO '+skip:''}`);
  loadList();refresh();
 }
-loadSkins();loadList();refresh();setInterval(refresh,1000);
+loadSkins();loadSources();refresh();setInterval(refresh,1000);
 </script></body></html>)HTML";

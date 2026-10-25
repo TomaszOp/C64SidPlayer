@@ -15,5 +15,16 @@ SETTING(uint8_t, volume,     "vol",   56)      // glosnosc 0..100
 SETTING(bool,    muted,      "mute",  false)   // wyciszenie
 SETTING(int8_t,  sidModel,   "model", -1)      // -1 auto, 0 = 6581, 1 = 8580
 SETTING(bool,    autoPlay,   "auto",  true)    // graj po wlaczeniu zasilania
-SETTING(String,  lastFile,   "file",  "")      // ostatnio grany plik
-SETTING(uint8_t, lastSong,   "song",  0)       // jego podutwor (0 = domyslny)
+SETTING(uint8_t, source,     "src",   0)       // aktywne zrodlo plikow (enum SourceType)
+
+// Dla kazdego zrodla: biezacy folder, ostatni plik i jego podutwor (0 = domyslny).
+// Nowe zrodlo = trzy linie tutaj i jedna pozycja w PlayerMemory::forSource().
+SETTING(String,  dirFlash,   "dirF",  "/")
+SETTING(String,  fileFlash,  "fileF", "")
+SETTING(uint8_t, songFlash,  "songF", 0)
+SETTING(String,  dirSd,      "dirS",  "/")
+SETTING(String,  fileSd,     "fileS", "")
+SETTING(uint8_t, songSd,     "songS", 0)
+SETTING(String,  dirDeepSid, "dirD",  "/")
+SETTING(String,  fileDeepSid,"fileD", "")
+SETTING(uint8_t, songDeepSid,"songD", 0)

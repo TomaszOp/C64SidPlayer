@@ -11,7 +11,9 @@
 // API (GET, odpowiedzi JSON): /api/status, /api/list, /api/play?file=X|index=N[&song=S],
 // /api/pause, /api/resume, /api/stop, /api/song?n=N|d=+-1, /api/file?d=+-1,
 // /api/volume?v=0..100, /api/mute[?on=0|1], /api/model?m=-1|0|1, /api/delete?file=X,
-// /api/skins (lista skorek), /api/skin?s=<id|numer> (zmiana wygladu strony)
+// /api/skins (lista skorek), /api/skin?s=<id|numer> (zmiana wygladu strony),
+// /api/sources, /api/source?s=flash|sd|deepsid, /api/cd?dir=X|..|/, /api/list?offset=N&count=M
+// (lista biezacego folderu w porcjach). Pliki: nazwa w biezacym folderze albo pelna sciezka.
 // oraz POST /upload (multipart, pole "file").
 #pragma once
 #include <WebServer.h>
@@ -39,7 +41,8 @@ private:
     void setupRoutes();
     void sendResult(const String& error);
     String statusJson();
-    String listJson();
+    String listJson(int offset, int count);
+    String sourcesJson();
     String skinsJson();
     void handleUploadData();
     void handleUploadDone();
@@ -48,7 +51,8 @@ private:
     WebServer server_;
     bool running_;
     bool routesReady_;
-    String uploadName_;
+    String uploadPath_;
+    String uploadError_;
     File uploadFile_;
     WebSettings settings_;
 };

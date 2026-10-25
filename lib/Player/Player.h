@@ -1,16 +1,19 @@
 // Player - odtwarzacz muzyki z Commodore 64 (pliki .sid) dla ESP32.
 //
 // Biblioteka laczy emulacje C64/SID (SidEngine) z wyjsciem audio I2S
-// i plikami zapisanymi w pamieci flash (LittleFS). Wszystkie metody sa
-// bezpieczne do wywolania z dowolnego zadania - dzwiek generuje osobne
-// zadanie FreeRTOS uruchamiane w begin().
+// i zrodlami plikow (SidSource.h): pamiec flash (LittleFS), karta SD...
+// Kazde zrodlo ma wlasny biezacy folder. Dzwiek generuje osobne zadanie
+// FreeRTOS uruchamiane w begin(). Metody plikow i odtwarzania wywoluj z jednego
+// zadania (np. loop()); glosnosc, pauza i status sa bezpieczne z kazdego.
 //
 // Metody zwracajace String zwracaja pusty napis przy powodzeniu,
 // a w razie bledu jego opis.
 //
 //   Player player;
-//   player.begin();               // I2S + LittleFS + zadanie audio
-//   player.play("Commando.sid");  // albo playIndex(1)
+//   player.begin();               // I2S + zrodla plikow + zadanie audio
+//   player.setSource(SourceType::SdCard);
+//   player.cd("Hubbard");         // folder biezacego zrodla, ".." = poziom wyzej
+//   player.play("Commando.sid");  // albo playIndex(1), albo pelna sciezka "/Hubbard/Commando.sid"
 //   player.pause(); player.resume(); player.stop();
 //   player.setVolume(70); player.setMute(true);
 #pragma once
@@ -18,6 +21,7 @@
 #include <FS.h>
 #include <vector>
 #include "sidplayer.h"
+#include "SidSource.h"
 
 struct PlayerConfig {
     uint32_t sampleRate = 44100;
@@ -28,20 +32,24 @@ struct PlayerConfig {
     int audioCore = 1;            // rdzen dla zadania audio
     int audioPriority = 5;
     bool formatFsIfFailed = true; // sformatuj LittleFS, gdy nie da sie zamontowac
+    // karta SD (SPI), uzywana gdy wlaczone -DPLAYER_SOURCE_SD=1
+    int sdCs = 5, sdSck = 18, sdMiso = 19, sdMosi = 23;
+    uint32_t sdFreq = 20000000;
 };
 // Wbudowany DAC klasycznego ESP32 (GPIO25/26) wlacza sie flaga -DSID_OUTPUT_INTERNAL_DAC.
 
 enum class PlayerState : uint8_t { Stopped, Playing, Paused };
 
-struct PlayerFile {
-    String name;                  // nazwa bez "/" na poczatku
-    size_t size;
-};
+// Pozycja listy biezacego folderu: najpierw foldery, potem pliki, alfabetycznie.
+typedef SourceEntry PlayerFile;
 
 struct PlayerStatus {
     PlayerState state;
     bool loaded;                  // czy jakis plik jest wczytany
-    String file;                  // nazwa biezacego pliku
+    String file;                  // pelna sciezka biezacego pliku, np. "/Hubbard/Commando.sid"
+    SourceType fileSource;        // zrodlo biezacego pliku
+    SourceType source;            // aktywne zrodlo (lista, next/prev, upload)
+    String dir;                   // biezacy folder aktywnego zrodla
     String title, author, released;
     int song, songs;              // biezacy podutwor / liczba podutworow
     uint32_t ms;                  // czas odtwarzania podutworu
@@ -65,22 +73,46 @@ public:
     const char* audioError() const;
     const PlayerConfig& config() const { return cfg_; }
 
-    // --- pliki w pamieci flash ---
-    std::vector<PlayerFile> files();          // posortowane alfabetycznie
-    int fileCount();
-    String fileName(int index);               // index od 1
-    int fileIndex(const String& name);        // 0 = nie ma
-    bool removeFile(const String& name);
-    size_t freeSpace();
-    fs::FS& fs();
+    // --- zrodla plikow ---
+    SourceType source() const { return source_; }
+    String setSource(SourceType type);            // blad, gdy zrodlo niewkompilowane
+    const SourceInfo& sourceInfo() const;         // opis aktywnego zrodla
+    SidSource& activeSource() { return *sources_[uint8_t(source_)]; }
+    bool sourceReady();                           // np. czy karta SD jest wlozona
+    String sourceError();
+
+    // --- foldery (kazde zrodlo pamieta swoj) ---
+    String dir() const { return dir_[uint8_t(source_)]; }
+    String dir(SourceType type) const { return dir_[uint8_t(type)]; }
+    String cd(const String& dir);                 // "x", "/a/b", ".." albo "/"
+    void setDir(SourceType type, const String& dir);   // bez sprawdzania - do odtworzenia ustawien
+
+    // --- pliki w biezacym folderze ---
+    const std::vector<PlayerFile>& files();       // foldery + pliki .sid
+    void refreshFiles();                          // przeczytaj folder ponownie przy nastepnym files()
+    bool filesTruncated() const { return truncated_; }
+    int fileCount();                              // tylko pliki, bez folderow
+    String fileName(int index);                   // index od 1, tylko pliki
+    int fileIndex(const String& nameOrPath);      // 0 = nie ma w biezacym folderze
+    String path(const String& nameOrPath) const;  // nazwa -> pelna sciezka w biezacym folderze
+    bool removeFile(const String& nameOrPath);
+    uint64_t freeSpace();
+    uint64_t totalSpace();
+    bool uploadAllowed();
+    bool deleteAllowed();                         // czy zrodlo pozwala usuwac pliki
+    // Sciezka dla wgrywanego pliku w biezacym folderze; zwraca blad albo "".
+    String prepareUpload(const String& fileName, String& path);
+    fs::File openWrite(const String& path);
+    bool removePath(const String& path);
     // Zamienia dowolna nazwe na bezpieczna nazwe pliku .sid ("" = niedozwolona).
     static String sanitizeName(const String& name);
     static const size_t MAX_FILE_SIZE = 0x10000 + 0x7C + 2;
+    static const size_t MAX_LIST = 1000;          // najwiecej pozycji w jednym folderze
 
     // --- odtwarzanie ---
-    String play(const String& name, int song = 0);   // song 0 = domyslny z pliku
+    String play(const String& nameOrPath, int song = 0);   // song 0 = domyslny z pliku
     String playIndex(int index, int song = 0);
-    String nextFile();
+    String nextFile();                                // tylko w biezacym folderze
     String prevFile();
     void stop();
     void pause();
@@ -114,10 +146,11 @@ private:
     static void audioTaskEntry(void* arg);
     void audioTask();
     bool setupI2S();
-    String loadAndStart(const String& name, int song);
+    String loadAndStart(const String& path, int song);
+    String stepFile(int delta);
+    int dirCount();
     void lock();
     void unlock();
-    static String path(const String& name) { return "/" + name; }
 
     PlayerConfig cfg_;
     SidPlayer sid_;
@@ -130,4 +163,11 @@ private:
     int modelSetting_;
     int i2sError_;
     String file_;
+    SourceType fileSource_;
+    SidSource* sources_[SOURCE_TYPE_COUNT];
+    SourceType source_;
+    String dir_[SOURCE_TYPE_COUNT];
+    std::vector<PlayerFile> list_;
+    bool listValid_;
+    bool truncated_;
 };

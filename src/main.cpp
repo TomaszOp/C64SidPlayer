@@ -66,24 +66,31 @@ void setup() {
     cfg.pinWs = I2S_PIN_WS;
     cfg.pinData = I2S_PIN_DATA;
     cfg.volume = DEFAULT_VOLUME;
+    cfg.sdCs = SD_PIN_CS;
+    cfg.sdSck = SD_PIN_SCK;
+    cfg.sdMiso = SD_PIN_MISO;
+    cfg.sdMosi = SD_PIN_MOSI;
+    cfg.sdFreq = SD_SPI_FREQ;
     if (!player.begin(cfg)) Console.println("Uwaga: problem z wyjsciem audio albo pamiecia plikow (LittleFS)");
     Console.printf("Silnik SID: %s, audio: %s\n", player.status().engine, player.audioError());
 
     // zapamietane ustawienia (pierwsze uruchomienie: wartosci z PlayerSettings.def)
     Console.println(memory.load() ? "Wczytano zapamietane ustawienia" : "Ustawienia domyslne");
     memory.apply(player);
+    Console.printf("Zrodlo plikow: %s, folder %s%s\n", player.sourceInfo().name, player.dir().c_str(),
+                   player.sourceReady() ? "" : (" (" + player.sourceError() + ")").c_str());
 
 #if USE_WEB
     connectWiFi();
     web.start();
 #endif
 
-    // po wlaczeniu zagraj ostatnio grany plik, a gdy go nie ma - pierwszy z pamieci
-    if (memory.autoPlay && player.fileCount() > 0) {
-        String e = "brak pliku";
-        if (memory.lastFile.length() && player.fileIndex(memory.lastFile))
-            e = player.play(memory.lastFile, memory.lastSong);
-        if (e.length()) e = player.playIndex(1);
+    // po wlaczeniu zagraj ostatni plik aktywnego zrodla, a gdy go nie ma - pierwszy z folderu
+    if (memory.autoPlay && player.sourceReady()) {
+        String last = memory.lastFile(player);
+        String e = last.length() ? player.play(last, memory.lastSong(player)) : String("brak");
+        if (e.length() && player.fileCount() > 0) e = player.playIndex(1);
+        else if (e.length()) e = "";            // pusty folder - nic do grania
         if (e.length()) Console.println("blad: " + e);
     }
 #if USE_CONSOLE

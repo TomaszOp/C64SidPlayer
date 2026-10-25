@@ -32,4 +32,33 @@
 // Wbudowany 8-bitowy DAC (build flag -DSID_OUTPUT_INTERNAL_DAC) wychodzi na GPIO25 (i GPIO26).
 // Dostepny tylko w klasycznym ESP32 - ESP32-S3 nie ma DAC, wymaga zewnetrznego DAC I2S.
 
+// --- Karta SD (modul SPI) ---
+// Wlaczana flaga -DPLAYER_SOURCE_SD=1 w platformio.ini. Zasilanie modulu: 3,3 V
+// (albo 5 V, jesli modul ma wlasny stabilizator). Domyslne piny:
+//   ESP32-S3: CS 10, MOSI 11, SCK 12, MISO 13      ESP32: CS 5, MOSI 23, SCK 18, MISO 19
+#if CONFIG_IDF_TARGET_ESP32S3
+#define SD_DEF_CS 10
+#define SD_DEF_MOSI 11
+#define SD_DEF_SCK 12
+#define SD_DEF_MISO 13
+#else
+#define SD_DEF_CS 5
+#define SD_DEF_MOSI 23
+#define SD_DEF_SCK 18
+#define SD_DEF_MISO 19
+#endif
+#ifndef SD_PIN_CS
+#define SD_PIN_CS      SD_DEF_CS
+#endif
+#ifndef SD_PIN_MOSI
+#define SD_PIN_MOSI    SD_DEF_MOSI
+#endif
+#ifndef SD_PIN_SCK
+#define SD_PIN_SCK     SD_DEF_SCK
+#endif
+#ifndef SD_PIN_MISO
+#define SD_PIN_MISO    SD_DEF_MISO
+#endif
+#define SD_SPI_FREQ    20000000          // obniz do 4000000, jesli karta nie dziala na dlugich kablach
+
 #define DEFAULT_VOLUME 56                // 0..100 (80 sciszone o 30%)

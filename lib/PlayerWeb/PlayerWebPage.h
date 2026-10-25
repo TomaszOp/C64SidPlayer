@@ -56,6 +56,11 @@ li.on .n div{color:var(--ok);font-weight:700}
 li button{min-height:44px;min-width:48px;padding:0 12px}
 li .del{background:transparent;border:1px solid var(--accent)}
 #free{font-size:12px;color:var(--hi);margin-top:8px;text-align:right}
+#path{font:14px ui-monospace,Menlo,Consolas,monospace;color:var(--hi);margin-bottom:8px;word-break:break-all}
+#upto{font-size:14px;color:var(--hi);margin-bottom:8px;word-break:break-word}
+li.dir .n div,li.up .n div{font-weight:700}
+li.dir .n div::before,li.up .n div::before{content:"\1F4C1  "}
+li.dir button{background:transparent;border:1px solid var(--accent)}
 #toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#000c;color:#fff;padding:10px 16px;border-radius:10px;opacity:0;transition:.2s;pointer-events:none;max-width:90vw}
 #toast.show{opacity:1}
 </style></head><body>
@@ -87,6 +92,7 @@ li .del{background:transparent;border:1px solid var(--accent)}
 
  <section class="card">
   <h2>Wgraj muzykę</h2>
+  <div id="upto"></div>
   <div id="drop" tabindex="0"><b>Dotknij, aby wybrać pliki .sid</b><small>lub przeciągnij je tutaj z komputera</small></div>
   <input type="file" id="fileIn" multiple>
   <div class="bar" id="bar"><i id="barI"></i></div>
@@ -95,20 +101,23 @@ li .del{background:transparent;border:1px solid var(--accent)}
 
  <section class="card full">
   <h2>Pliki <span id="count"></span></h2>
-  <input id="search" type="search" placeholder="Szukaj…" autocomplete="off">
+  <div class="row" id="srcRow" style="margin-bottom:8px"><span>Źródło</span><select id="src"></select></div>
+  <div id="path"></div>
+  <input id="search" type="search" placeholder="Szukaj w folderze…" autocomplete="off">
   <ul id="list"></ul>
+  <button id="more" style="width:100%;margin-top:8px;display:none">Pokaż więcej</button>
   <div id="free"></div>
  </section>
 </div>
 <div id="toast"></div>
 <script>
 const $=id=>document.getElementById(id);
-let st={},files=[],toastT;
+let st={},files=[],toastT,li={},listKey='',sources=[];
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function toast(t,bad){const e=$('toast');e.textContent=t;e.style.color=bad?'var(--err)':'#fff';e.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove('show'),2500)}
 async function api(p){try{const r=await fetch('/api/'+p);const j=await r.json();if(j.error)toast(j.error,1);refresh();return j}catch(e){toast('Brak połączenia z ESP32',1)}}
 const fmt=ms=>{const s=Math.floor((ms||0)/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
-const kb=b=>b<1024?b+' B':(b/1024).toFixed(1)+' KB';
+const kb=b=>b<1024?b+' B':b<1048576?(b/1024).toFixed(1)+' KB':b<1073741824?(b/1048576).toFixed(1)+' MB':(b/1073741824).toFixed(1)+' GB';
 
 async function refresh(){
  try{st=await (await fetch('/api/status')).json()}catch(e){return}
@@ -122,26 +131,52 @@ async function refresh(){
  $('prev').disabled=$('next').disabled=!has||st.songs<2;
  if(document.activeElement!==$('vol')){$('vol').value=st.volume;$('volv').textContent=st.volume+'%'}
  $('model').value=st.modelSetting;
- if(st.freeFs!=null)$('free').textContent='Wolne miejsce: '+kb(st.freeFs);
- document.querySelectorAll('#list li').forEach(li=>li.classList.toggle('on',li.dataset.f===st.file));
+ $('free').textContent=st.freeFs!=null?'Wolne miejsce: '+kb(st.freeFs):'';
+ document.querySelectorAll('#list li').forEach(l=>l.classList.toggle('on',st.fileSource===st.source&&l.dataset.f===st.file));
+ if(st.source&&st.source+':'+st.dir!==listKey){listKey=st.source+':'+st.dir;loadList()}
 }
-async function loadList(){
- try{files=await (await fetch('/api/list')).json()}catch(e){return}
+// lista biezacego folderu, w porcjach po 100
+async function loadList(more){
+ let j;try{j=await (await fetch('/api/list?count=100&offset='+(more?files.length:0))).json()}catch(e){return}
+ files=more?files.concat(j.items):j.items;li=j;listKey=j.source+':'+j.dir;
+ if(!more)$('search').value='';
  render();
 }
+const full=n=>(li.dir==='/'?'/':li.dir+'/')+n;
+const srcName=id=>(sources.find(s=>s.id===id)||{name:id}).name;
 function render(){
  const q=$('search').value.toLowerCase();
- const l=files.filter(f=>f.name.toLowerCase().includes(q)).sort((a,b)=>a.name.localeCompare(b.name));
- $('count').textContent='('+files.length+')';
- $('list').innerHTML=l.map(f=>`<li data-f="${esc(f.name)}" class="${f.name===st.file?'on':''}">
+ const l=files.filter(f=>f.name.toLowerCase().includes(q));
+ $('count').textContent='('+(li.total||0)+')';
+ $('path').textContent=srcName(li.source)+': '+(li.dir||'/');
+ let h=li.dir&&li.dir!=='/'?'<li class="up"><div class="n" data-act="up"><div>..</div><small>poziom wyżej</small></div></li>':'';
+ h+=l.map(f=>f.dir?`<li class="dir" data-d="${esc(f.name)}"><div class="n" data-act="cd"><div>${esc(f.name)}</div><small>folder</small></div>
+  <button data-act="cd" title="Otwórz">&#10095;</button></li>`
+  :`<li data-f="${esc(full(f.name))}" class="${st.fileSource===st.source&&full(f.name)===st.file?'on':''}">
   <div class="n" data-act="play"><div>${esc(f.name.replace(/\.sid$/i,'').replace(/_/g,' '))}</div><small>${kb(f.size)}</small></div>
-  <button data-act="play" title="Graj">&#9654;</button><button class="del" data-act="del" title="Usuń">&#128465;</button></li>`).join('')
-  ||'<li><div class="n">Brak plików – wgraj pierwszy plik .sid</div></li>';
+  <button data-act="play" title="Graj">&#9654;</button>${li.del?'<button class="del" data-act="del" title="Usuń">&#128465;</button>':''}</li>`).join('');
+ if(li.ready===false)h+=`<li><div class="n err">${esc(li.error||'Źródło niedostępne')}</div></li>`;
+ else if(!files.length)h+='<li><div class="n">Pusty folder'+(li.upload?' – wgraj pierwszy plik .sid':'')+'</div></li>';
+ $('list').innerHTML=h;
+ $('more').style.display=files.length<li.total?'block':'none';
+ $('more').textContent=`Pokaż więcej (${files.length} z ${li.total})`;
+ $('drop').style.display=li.upload?'block':'none';
+ $('upto').innerHTML=li.upload?'Pliki trafią do: <b>'+esc(srcName(li.source)+': '+li.dir)+'</b>':'Wgrywanie do tego źródła jest wyłączone.';
 }
+async function loadSources(){
+ try{const j=await (await fetch('/api/sources')).json();sources=j.sources;
+  $('src').innerHTML=sources.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}${s.ready?'':' (niedostępne)'}</option>`).join('');
+  $('src').value=j.current;$('srcRow').style.display=sources.length>1?'flex':'none';render()}catch(e){}
+}
+$('src').onchange=e=>api('source?s='+encodeURIComponent(e.target.value)).then(loadSources);
+$('more').onclick=()=>loadList(true);
 $('list').onclick=e=>{
- const a=e.target.closest('[data-act]');if(!a)return;const f=a.closest('li').dataset.f;if(!f)return;
- if(a.dataset.act==='play')api('play?file='+encodeURIComponent(f));
- else if(confirm('Usunąć '+f+'?'))api('delete?file='+encodeURIComponent(f)).then(loadList);
+ const a=e.target.closest('[data-act]');if(!a)return;const r=a.closest('li'),act=a.dataset.act;
+ if(act==='up')return api('cd?dir=..');
+ if(act==='cd')return api('cd?dir='+encodeURIComponent(r.dataset.d));
+ const f=r.dataset.f;if(!f)return;
+ if(act==='play')api('play?file='+encodeURIComponent(f));
+ else if(confirm('Usunąć '+f+'?'))api('delete?file='+encodeURIComponent(f)).then(()=>loadList());
 };
 $('search').oninput=render;
 $('pp').onclick=()=>st.loaded?api('pause'):(files.length?api('play?index=1'):toast('Najpierw wgraj plik .sid'));
@@ -187,5 +222,5 @@ async function upload(list){
   (skip?`Pominięto ${skip} (nie .sid). `:'')+errs.map(e=>'<div class=err>'+esc(e)+'</div>').join('');
  loadList();refresh();
 }
-loadSkins();loadList();refresh();setInterval(refresh,1000);
+loadSkins();loadSources();refresh();setInterval(refresh,1000);
 </script></body></html>)HTML";

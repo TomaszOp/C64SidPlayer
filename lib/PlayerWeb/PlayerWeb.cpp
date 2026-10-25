@@ -1,4 +1,5 @@
 #include "PlayerWeb.h"
+#include <algorithm>
 
 // Napisy w plikach SID sa w ISO-8859-1; zamiana na UTF-8 z escapowaniem JSON.
 static String jsonStr(const String& s) {
@@ -77,20 +78,50 @@ String PlayerWeb::statusJson() {
     j += ",\"modelSetting\":" + String(s.modelSetting);
     j += ",\"engine\":" + jsonStr(s.engine);
     j += ",\"load\":" + String(s.cpuLoad);
-    j += ",\"freeFs\":" + String(player_.freeSpace());
+    j += ",\"source\":" + jsonStr(player_.sourceInfo().id);
+    j += ",\"dir\":" + jsonStr(s.dir);
+    j += ",\"fileSource\":" + jsonStr(::sourceInfo(s.fileSource) ? ::sourceInfo(s.fileSource)->id : "");
+    // zrodla bez wlasnej pamieci (internet) nie podaja wolnego miejsca
+    if (player_.totalSpace()) j += ",\"freeFs\":" + String(double(player_.freeSpace()), 0);
     j += ",\"skin\":" + jsonStr(WEB_SKINS[uint8_t(skin())].id);
     return j + "}";
 }
 
-String PlayerWeb::listJson() {
-    String j = "[";
-    bool first = true;
-    for (const PlayerFile& f : player_.files()) {
-        if (!first) j += ",";
-        first = false;
-        j += "{\"name\":" + jsonStr(f.name) + ",\"size\":" + String(f.size) + "}";
+// Lista biezacego folderu w porcjach: offset / count (duze foldery, np. z HVSC).
+String PlayerWeb::listJson(int offset, int count) {
+    if (offset <= 0) player_.refreshFiles();      // pierwsza porcja = czytaj folder od nowa
+    const std::vector<PlayerFile>& list = player_.files();
+    bool ready = player_.sourceReady();
+    String j = "{\"source\":" + jsonStr(player_.sourceInfo().id);
+    j += ",\"dir\":" + jsonStr(player_.dir());
+    j += ",\"ready\":" + String(ready ? "true" : "false");
+    j += ",\"error\":" + jsonStr(ready ? String("") : player_.sourceError());
+    j += ",\"upload\":" + String(player_.uploadAllowed() ? "true" : "false");
+    j += ",\"del\":" + String(player_.deleteAllowed() ? "true" : "false");
+    j += ",\"total\":" + String(unsigned(list.size()));
+    j += ",\"truncated\":" + String(player_.filesTruncated() ? "true" : "false");
+    j += ",\"offset\":" + String(offset) + ",\"items\":[";
+    int end = std::min(int(list.size()), offset + count);
+    for (int i = std::max(offset, 0); i < end; i++) {
+        if (i > offset) j += ",";
+        j += "{\"name\":" + jsonStr(list[i].name) + ",\"size\":" + String(unsigned(list[i].size));
+        if (list[i].dir) j += ",\"dir\":true";
+        j += "}";
     }
-    return j + "]";
+    return j + "]}";
+}
+
+String PlayerWeb::sourcesJson() {
+    String j = "{\"current\":" + jsonStr(player_.sourceInfo().id) + ",\"sources\":[";
+    for (uint8_t i = 0; i < PLAYER_SOURCE_COUNT; i++) {
+        const SourceInfo& s = PLAYER_SOURCES[i];
+        SidSource* impl = sourceImpl(s.type);
+        if (i) j += ",";
+        j += "{\"id\":" + jsonStr(s.id) + ",\"name\":" + jsonStr(s.name);
+        j += ",\"upload\":" + String(s.upload ? "true" : "false");
+        j += ",\"ready\":" + String(impl && impl->ready() ? "true" : "false") + "}";
+    }
+    return j + "]}";
 }
 
 String PlayerWeb::skinsJson() {
@@ -113,7 +144,17 @@ void PlayerWeb::setupRoutes() {
         sendResult("nieznana skorka: " + s);
     });
     server_.on("/api/status", HTTP_GET, [this] { server_.send(200, "application/json", statusJson()); });
-    server_.on("/api/list", HTTP_GET, [this] { server_.send(200, "application/json", listJson()); });
+    server_.on("/api/list", HTTP_GET, [this] {
+        int count = server_.hasArg("count") ? server_.arg("count").toInt() : 100;
+        server_.send(200, "application/json", listJson(server_.arg("offset").toInt(), constrain(count, 1, 200)));
+    });
+    server_.on("/api/cd", HTTP_GET, [this] { sendResult(player_.cd(server_.arg("dir"))); });
+    server_.on("/api/sources", HTTP_GET, [this] { server_.send(200, "application/json", sourcesJson()); });
+    server_.on("/api/source", HTTP_GET, [this] {
+        const SourceInfo* info = ::sourceInfo(server_.arg("s"));
+        if (!info) { sendResult("nieznane zrodlo: " + server_.arg("s")); return; }
+        sendResult(player_.setSource(info->type));
+    });
     server_.on("/api/play", HTTP_GET, [this] {
         int song = server_.arg("song").toInt();
         if (server_.hasArg("index")) sendResult(player_.playIndex(server_.arg("index").toInt(), song));
@@ -143,32 +184,36 @@ void PlayerWeb::setupRoutes() {
     server_.onNotFound([this] { server_.send(404, "text/plain", "404"); });
 }
 
+// Plik trafia do biezacego folderu aktywnego zrodla (jesli zrodlo na to pozwala).
 void PlayerWeb::handleUploadData() {
     HTTPUpload& up = server_.upload();
     if (up.status == UPLOAD_FILE_START) {
-        uploadName_ = Player::sanitizeName(up.filename);
-        if (uploadName_.length()) {
-            if (uploadName_ == player_.status().file) player_.stop();
-            uploadFile_ = player_.fs().open("/" + uploadName_, "w");
+        uploadError_ = player_.prepareUpload(up.filename, uploadPath_);
+        if (!uploadError_.length()) {
+            uploadFile_ = player_.openWrite(uploadPath_);
+            if (!uploadFile_) uploadError_ = "nie mozna zapisac " + uploadPath_;
         }
     } else if (up.status == UPLOAD_FILE_WRITE) {
-        if (uploadFile_) uploadFile_.write(up.buf, up.currentSize);
+        if (uploadFile_ && uploadFile_.write(up.buf, up.currentSize) != up.currentSize && !uploadError_.length())
+            uploadError_ = "brak miejsca";
     } else if (up.status == UPLOAD_FILE_END) {
         if (uploadFile_) uploadFile_.close();
-        if (up.totalSize > Player::MAX_FILE_SIZE && uploadName_.length()) {
-            player_.fs().remove("/" + uploadName_);
-            uploadName_ = "";
-        }
+        if (!uploadError_.length() && up.totalSize > Player::MAX_FILE_SIZE) uploadError_ = "plik za duzy (max 64 KB)";
+        if (uploadError_.length() && uploadPath_.length()) player_.removePath(uploadPath_);
     } else if (up.status == UPLOAD_FILE_ABORTED) {
         if (uploadFile_) uploadFile_.close();
-        if (uploadName_.length()) player_.fs().remove("/" + uploadName_);
-        uploadName_ = "";
+        if (uploadPath_.length()) player_.removePath(uploadPath_);
+        uploadError_ = "przerwano wysylanie";
     }
 }
 
 void PlayerWeb::handleUploadDone() {
-    if (!uploadName_.length()) { sendResult("dozwolone sa tylko pliki .sid (do 64 KB)"); return; }
-    String e = player_.play(uploadName_);
-    if (e.length()) player_.fs().remove("/" + uploadName_);   // to nie byl poprawny plik SID
+    player_.refreshFiles();
+    if (uploadError_.length() || !uploadPath_.length()) {
+        sendResult(uploadError_.length() ? uploadError_ : String("brak pliku"));
+        return;
+    }
+    String e = player_.play(uploadPath_);
+    if (e.length()) player_.removePath(uploadPath_);   // to nie byl poprawny plik SID
     sendResult(e);
 }
