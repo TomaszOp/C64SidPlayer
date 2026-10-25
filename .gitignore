@@ -1,0 +1,33 @@
+# Dane WiFi (wzor: include/secrets.example.h)
+include/secrets.h
+
+# PlatformIO: kompilacja, pobrane biblioteki i narzedzia
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# VS Code: pliki generowane automatycznie przez PlatformIO
+# (extensions.json zostaje - podpowiada instalacje rozszerzenia PlatformIO)
+.vscode/*
+!.vscode/extensions.json
+*.code-workspace
+
+# Inne edytory / IDE
+.idea/
+*.swp
+*~
+
+# Pliki systemowe
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Narzedzie PC tools/sid2wav i jego wyniki
+sid2wav
+sid2wav.exe
+*.o
+*.wav
+
+# Python
+__pycache__/
+*.pyc
