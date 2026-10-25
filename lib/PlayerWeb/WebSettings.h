@@ -1,7 +1,9 @@
 /**
  * @file WebSettings.h
- * @brief WebSettings - web panel settings stored in NVS, independent of the
+ * @brief WebSettings - web panel settings remembered in NVS, independent of the
  *        player settings. List of settings: WebSettings.def.
+ *
+ * Generates the class WebSettings (see NvsSettingsClass.h) in NVS namespace "c64web".
  */
 #pragma once
 #include <NvsSettings.h>

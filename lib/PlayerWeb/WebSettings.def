@@ -6,3 +6,4 @@
 
 //      type     name   key     default
 SETTING(uint8_t, skin,  "skin", 0)    // page look (enum WebSkin, 0 = Modern)
+SETTING(uint8_t, lang,  "lang", 0)    // page language (enum WebLang, 0 = Polish)

@@ -25,19 +25,21 @@ SID chip** connected to the ESP32.
 
 ## Hardware
 
-| Board | PlatformIO environment | Notes |
-|---|---|---|
-| ESP32 (WROOM-32, DevKit V1) | `esp32dev` | I2S DAC or the internal DAC |
-| ESP32-S3 N16R8 (16 MB flash, 8 MB PSRAM) | `esp32s3-n16r8` | I2S DAC only (no internal DAC) |
+
+| Board                                    | PlatformIO environment | Notes                          |
+| ---------------------------------------- | ---------------------- | ------------------------------ |
+| ESP32 (WROOM-32, DevKit V1)              | `esp32dev`             | I2S DAC or the internal DAC    |
+| ESP32-S3 N16R8 (16 MB flash, 8 MB PSRAM) | `esp32s3-n16r8`        | I2S DAC only (no internal DAC) |
 
 ### I2S DAC
 
-| DAC | ESP32 | ESP32-S3 |
-|---|---|---|
-| BCK / BCLK | GPIO26 | GPIO4 |
-| LRCK / WS / LRC | GPIO25 | GPIO5 |
-| DIN / DATA | GPIO22 | GPIO6 |
-| VCC / GND | 3V3 (5V for MAX98357A) / GND | same |
+
+| DAC             | ESP32                        | ESP32-S3 |
+| --------------- | ---------------------------- | -------- |
+| BCK / BCLK      | GPIO26                       | GPIO4    |
+| LRCK / WS / LRC | GPIO25                       | GPIO5    |
+| DIN / DATA      | GPIO22                       | GPIO6    |
+| VCC / GND       | 3V3 (5V for MAX98357A) / GND | same     |
 
 PCM5102A: SCK → GND, FMT → GND, XSMT → 3V3.
 
@@ -50,13 +52,14 @@ input / active speakers, GND → GND.
 Enabled with `-DPLAYER_SOURCE_SD=1` (off by default in both environments). Pins in
 `include/config.h` (`SD_PIN_*`):
 
-| SD module | ESP32-S3 | ESP32 |
-|---|---|---|
-| CS | GPIO10 | GPIO5 |
-| MOSI | GPIO11 | GPIO23 |
-| SCK / CLK | GPIO12 | GPIO18 |
-| MISO | GPIO13 | GPIO19 |
-| VCC / GND | 3V3 (5V if the module has a regulator) / GND | same |
+
+| SD module | ESP32-S3                                     | ESP32  |
+| --------- | -------------------------------------------- | ------ |
+| CS        | GPIO10                                       | GPIO5  |
+| MOSI      | GPIO11                                       | GPIO23 |
+| SCK / CLK | GPIO12                                       | GPIO18 |
+| MISO      | GPIO13                                       | GPIO19 |
+| VCC / GND | 3V3 (5V if the module has a regulator) / GND | same   |
 
 The card must be formatted as FAT32. If it does not work, lower `SD_SPI_FREQ` in `config.h`.
 
@@ -66,14 +69,15 @@ With `-DSID_ENGINE=2` the music is played by an original MOS 6581 or 8580. The c
 through two 74HCT595 shift registers (data and address) and a 74HCT125 buffer (/CS, Φ2, /RES);
 R/W is tied to GND, so no 5 V signal ever reaches the ESP32.
 
-| Signal | ESP32-S3 | ESP32 |
-|---|---|---|
-| DATA (74HCT595 DS) | GPIO15 | GPIO13 |
-| SHIFT (SHCP) | GPIO16 | GPIO14 |
-| LATCH (STCP) | GPIO17 | GPIO27 |
-| /CS | GPIO18 | GPIO21 |
-| Φ2 (~1 MHz clock) | GPIO7 | GPIO32 |
-| /RES | GPIO8 | GPIO33 |
+
+| Signal             | ESP32-S3 | ESP32  |
+| ------------------ | -------- | ------ |
+| DATA (74HCT595 DS) | GPIO15   | GPIO13 |
+| SHIFT (SHCP)       | GPIO16   | GPIO14 |
+| LATCH (STCP)       | GPIO17   | GPIO27 |
+| /CS                | GPIO18   | GPIO21 |
+| Φ2 (~1 MHz clock) | GPIO7    | GPIO32 |
+| /RES               | GPIO8    | GPIO33 |
 
 Power: VCC 5 V; VDD **12 V for 6581**, **9 V for 8580** (12 V can damage an 8580). Filter
 capacitors: 470 pF (6581) or 22 nF (8580). Set the chip model with `REAL_SID_MODEL` in
@@ -97,16 +101,17 @@ SID files: High Voltage SID Collection, https://www.hvsc.c64.org/
 
 ### Build flags (`platformio.ini`, `build_flags` of an environment)
 
-| Flag | Meaning |
-|---|---|
-| `-DSID_ENGINE=1` (default) | **reSID 0.16** (Dag Lem): cycle-exact emulation, real 6581/8580 combined waveforms, accurate filter |
-| `-DSID_ENGINE=0` | lightweight built-in engine (`lib/SidEngine/sid.*`) |
-| `-DSID_ENGINE=2` | **real 6581/8580 chip** connected to the ESP32 (`lib/SidEngine/real_sid_chip.*`) |
-| `-DSID_RESID_INTERPOLATE=1` | reSID only: interpolated sampling, better quality, about 10× more CPU load |
-| `-DSID_OUTPUT_INTERNAL_DAC` | internal DAC of the classic ESP32 instead of I2S |
-| `-DPLAYER_SOURCE_SD=1` | SD card source |
-| `-DPLAYER_SOURCE_DEEPSID=1` | DeepSID internet source (on in the S3 environment) |
-| `-DSID_OVERSAMPLE=2` | built-in engine only: less oversampling (default 4) if the ESP32 cannot keep up |
+
+| Flag                        | Meaning                                                                                             |
+| --------------------------- | --------------------------------------------------------------------------------------------------- |
+| `-DSID_ENGINE=1` (default)  | **reSID 0.16** (Dag Lem): cycle-exact emulation, real 6581/8580 combined waveforms, accurate filter |
+| `-DSID_ENGINE=0`            | lightweight built-in engine (`lib/SidEngine/sid.*`)                                                 |
+| `-DSID_ENGINE=2`            | **real 6581/8580 chip** connected to the ESP32 (`lib/SidEngine/real_sid_chip.*`)                    |
+| `-DSID_RESID_INTERPOLATE=1` | reSID only: interpolated sampling, better quality, about 10× more CPU load                         |
+| `-DSID_OUTPUT_INTERNAL_DAC` | internal DAC of the classic ESP32 instead of I2S                                                    |
+| `-DPLAYER_SOURCE_SD=1`      | SD card source                                                                                      |
+| `-DPLAYER_SOURCE_DEEPSID=1` | DeepSID internet source (on in the S3 environment)                                                  |
+| `-DSID_OVERSAMPLE=2`        | built-in engine only: less oversampling (default 4) if the ESP32 cannot keep up                     |
 
 The active engine and CPU load are shown by the `info` command and on the web page.
 
@@ -135,11 +140,12 @@ I2S pins, SD card pins and SPI clock, default volume, and the real-SID settings:
 
 ## File sources and folders
 
-| Source | Flag | Upload / delete | Notes |
-|---|---|---|---|
-| Flash (LittleFS) | always on | yes | create folders in `data/` before `uploadfs`; full path up to ~63 characters |
-| SD card | `PLAYER_SOURCE_SD=1` | yes | you can copy the whole HVSC collection to the card |
-| DeepSid | `PLAYER_SOURCE_DEEPSID=1` | no (read-only) | HVSC over the internet, needs a WiFi connection |
+
+| Source           | Flag                      | Upload / delete | Notes                                                                      |
+| ---------------- | ------------------------- | --------------- | -------------------------------------------------------------------------- |
+| Flash (LittleFS) | always on                 | yes             | create folders in`data/` before `uploadfs`; full path up to ~63 characters |
+| SD card          | `PLAYER_SOURCE_SD=1`      | yes             | you can copy the whole HVSC collection to the card                         |
+| DeepSid          | `PLAYER_SOURCE_DEEPSID=1` | no (read-only)  | HVSC over the internet, needs a WiFi connection                            |
 
 - Choose the source from the "Source" list on the page; folders are marked with 📁, ".." goes one level up.
 - Next / previous file works within the current folder.
@@ -158,6 +164,9 @@ Adding a source: a value in `enum SourceType`, a class derived from `SidSource`,
 
 ## Web panel
 
+![](docs/images/www_main.png)
+
+
 `http://c64sid.local/` works on phones and PCs. Skins are chosen from the "Look" list:
 **Modern** (default) or **Commodore 64** (C64 screen, terminal font, file list like
 `LOAD"$",8`). The choice is stored in NVS. If the "C64 Pro Mono" font is installed on the
@@ -169,7 +178,7 @@ Adding a skin: copy `PlayerWebPageC64.h` under a new name and rename its array, 
 HTTP API used by the page (all `GET` except upload): `/api/status`, `/api/list`, `/api/cd?dir=`,
 `/api/sources`, `/api/source`, `/api/play`, `/api/pause`, `/api/resume`, `/api/stop`,
 `/api/song`, `/api/file`, `/api/volume?v=`, `/api/mute`, `/api/model?m=`, `/api/delete`,
-`/api/skins`, `/api/skin?s=`, `POST /upload`.
+`/api/skins`, `/api/skin?s=`, `/api/langs`, `/api/lang?l=`, `POST /upload`.
 
 ## Serial console (115200 baud)
 
@@ -209,15 +218,16 @@ void setup() {
 }
 ```
 
-| Group | Methods |
-|---|---|
-| playback | `play(name, song)`, `playIndex(n)`, `nextFile()`, `prevFile()`, `stop()`, `pause()`, `resume()`, `togglePause()` |
-| subtunes | `setSong(n)`, `nextSong()`, `prevSong()`, `restartSong()` |
-| sound | `setVolume(0-100)`, `volumeUp()`, `volumeDown()`, `setMute()`, `toggleMute()`, `setModel(-1/0/1)`, `setTestTone()` |
-| sources | `setSource(type)`, `source()`, `sourceInfo()`, `sourceReady()`, `sourceError()`, `activeSource()` |
-| folders | `cd(folder)`, `dir()`, `dir(type)`, `setDir(type, folder)`; each source keeps its own folder |
-| files | `files()` (folders + files), `fileCount()`, `fileName(n)`, `removeFile(name)`, `freeSpace()`, `uploadAllowed()`, `prepareUpload()`, `sanitizeName()` |
-| state | `status()` (title, author, subtune, time, volume, CPU load...), `state()`, `isPlaying()`, `audioError()` |
+
+| Group    | Methods                                                                                                                                              |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| playback | `play(name, song)`, `playIndex(n)`, `nextFile()`, `prevFile()`, `stop()`, `pause()`, `resume()`, `togglePause()`                                     |
+| subtunes | `setSong(n)`, `nextSong()`, `prevSong()`, `restartSong()`                                                                                            |
+| sound    | `setVolume(0-100)`, `volumeUp()`, `volumeDown()`, `setMute()`, `toggleMute()`, `setModel(-1/0/1)`, `setTestTone()`                                   |
+| sources  | `setSource(type)`, `source()`, `sourceInfo()`, `sourceReady()`, `sourceError()`, `activeSource()`                                                    |
+| folders  | `cd(folder)`, `dir()`, `dir(type)`, `setDir(type, folder)`; each source keeps its own folder                                                         |
+| files    | `files()` (folders + files), `fileCount()`, `fileName(n)`, `removeFile(name)`, `freeSpace()`, `uploadAllowed()`, `prepareUpload()`, `sanitizeName()` |
+| state    | `status()` (title, author, subtune, time, volume, CPU load...), `state()`, `isPlaying()`, `audioError()`                                             |
 
 Methods returning `String` return an empty string on success and an error description otherwise.
 Pause stops the music in place; mute only silences it while the music keeps running.
@@ -247,19 +257,20 @@ existing setting, increase `NVS_VERSION` in `PlayerMemory.h` so the old record i
 
 ## Project layout
 
-| Path | Contents |
-|---|---|
-| `lib/Player/` | **player library**: I2S audio, file sources (`SidSource.h`: flash, SD, DeepSID) with folders, control |
-| `lib/SidEngine/` | C64 emulation: 6510 CPU (`cpu6502.*`), PSID/RSID loader (`sidplayer.*`), SID engines (`sid.*`, `resid/`, `real_sid_chip.*`), engine selection (`sidchip.h`) |
-| `lib/NvsSettings/` | shared NVS settings mechanism (fields listed in a `.def` file, only changes are written) |
-| `lib/PlayerMemory/` | player settings (`PlayerMemory`, list in `PlayerSettings.def`) |
-| `lib/PlayerWeb/` | example: web panel (`PlayerWeb`, skins in `PlayerWebSkins.h`, pages in `PlayerWebPage*.h`) |
-| `lib/PlayerConsole/` | example: serial console (`PlayerConsole`, `DualSerial` for USB + UART) |
-| `src/main.cpp` | example: WiFi + Player + PlayerWeb + PlayerConsole |
-| `include/config.h` | WiFi, pins, sample rate, volume, real SID |
-| `docs/REAL_SID.md` | real SID wiring guide (English + Polish) |
-| `tools/sid2wav.cpp` | the same emulator on a PC: `.sid` → `.wav` |
-| `data/` | `.sid` files uploaded to flash with `pio run -t uploadfs` |
+
+| Path                 | Contents                                                                                                                                                    |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/Player/`        | **player library**: I2S audio, file sources (`SidSource.h`: flash, SD, DeepSID) with folders, control                                                       |
+| `lib/SidEngine/`     | C64 emulation: 6510 CPU (`cpu6502.*`), PSID/RSID loader (`sidplayer.*`), SID engines (`sid.*`, `resid/`, `real_sid_chip.*`), engine selection (`sidchip.h`) |
+| `lib/NvsSettings/`   | shared NVS settings mechanism (fields listed in a`.def` file, only changes are written)                                                                     |
+| `lib/PlayerMemory/`  | player settings (`PlayerMemory`, list in `PlayerSettings.def`)                                                                                              |
+| `lib/PlayerWeb/`     | example: web panel (`PlayerWeb`, skins in `PlayerWebSkins.h`, pages in `PlayerWebPage*.h`)                                                                  |
+| `lib/PlayerConsole/` | example: serial console (`PlayerConsole`, `DualSerial` for USB + UART)                                                                                      |
+| `src/main.cpp`       | example: WiFi + Player + PlayerWeb + PlayerConsole                                                                                                          |
+| `include/config.h`   | WiFi, pins, sample rate, volume, real SID                                                                                                                   |
+| `docs/REAL_SID.md`   | real SID wiring guide (English + Polish)                                                                                                                    |
+| `tools/sid2wav.cpp`  | the same emulator on a PC:`.sid` → `.wav`                                                                                                                  |
+| `data/`              | `.sid` files uploaded to flash with `pio run -t uploadfs`                                                                                                   |
 
 ## Testing on a PC
 
@@ -315,19 +326,21 @@ podłączony do ESP32.
 
 ## Sprzęt
 
-| Płytka | Środowisko PlatformIO | Uwagi |
-|---|---|---|
-| ESP32 (WROOM-32, DevKit V1) | `esp32dev` | DAC I2S albo wbudowany DAC |
-| ESP32-S3 N16R8 (16 MB flash, 8 MB PSRAM) | `esp32s3-n16r8` | tylko DAC I2S (brak wbudowanego DAC) |
+
+| Płytka                                  | Środowisko PlatformIO | Uwagi                                |
+| ---------------------------------------- | ---------------------- | ------------------------------------ |
+| ESP32 (WROOM-32, DevKit V1)              | `esp32dev`             | DAC I2S albo wbudowany DAC           |
+| ESP32-S3 N16R8 (16 MB flash, 8 MB PSRAM) | `esp32s3-n16r8`        | tylko DAC I2S (brak wbudowanego DAC) |
 
 ### DAC I2S
 
-| DAC | ESP32 | ESP32-S3 |
-|---|---|---|
-| BCK / BCLK | GPIO26 | GPIO4 |
-| LRCK / WS / LRC | GPIO25 | GPIO5 |
-| DIN / DATA | GPIO22 | GPIO6 |
-| VCC / GND | 3V3 (5V dla MAX98357A) / GND | jw. |
+
+| DAC             | ESP32                        | ESP32-S3 |
+| --------------- | ---------------------------- | -------- |
+| BCK / BCLK      | GPIO26                       | GPIO4    |
+| LRCK / WS / LRC | GPIO25                       | GPIO5    |
+| DIN / DATA      | GPIO22                       | GPIO6    |
+| VCC / GND       | 3V3 (5V dla MAX98357A) / GND | jw.      |
 
 PCM5102A: SCK → GND, FMT → GND, XSMT → 3V3.
 
@@ -340,13 +353,14 @@ wejście wzmacniacza / głośniki aktywne, GND → GND.
 Włączana flagą `-DPLAYER_SOURCE_SD=1` (domyślnie wyłączona w obu środowiskach). Piny
 w `include/config.h` (`SD_PIN_*`):
 
-| Moduł SD | ESP32-S3 | ESP32 |
-|---|---|---|
-| CS | GPIO10 | GPIO5 |
-| MOSI | GPIO11 | GPIO23 |
-| SCK / CLK | GPIO12 | GPIO18 |
-| MISO | GPIO13 | GPIO19 |
-| VCC / GND | 3V3 (5V, jeśli moduł ma stabilizator) / GND | jw. |
+
+| Moduł SD | ESP32-S3                                      | ESP32  |
+| --------- | --------------------------------------------- | ------ |
+| CS        | GPIO10                                        | GPIO5  |
+| MOSI      | GPIO11                                        | GPIO23 |
+| SCK / CLK | GPIO12                                        | GPIO18 |
+| MISO      | GPIO13                                        | GPIO19 |
+| VCC / GND | 3V3 (5V, jeśli moduł ma stabilizator) / GND | jw.    |
 
 Karta musi być sformatowana w FAT32. Jeśli nie działa, zmniejsz `SD_SPI_FREQ` w `config.h`.
 
@@ -356,14 +370,15 @@ Z flagą `-DSID_ENGINE=2` muzykę gra oryginalny MOS 6581 albo 8580. Układ jest
 dwa rejestry przesuwne 74HCT595 (dane i adres) oraz bufor 74HCT125 (/CS, Φ2, /RES); R/W jest na
 masie, więc żaden sygnał 5 V nie wraca do ESP32.
 
-| Sygnał | ESP32-S3 | ESP32 |
-|---|---|---|
-| DATA (74HCT595 DS) | GPIO15 | GPIO13 |
-| SHIFT (SHCP) | GPIO16 | GPIO14 |
-| LATCH (STCP) | GPIO17 | GPIO27 |
-| /CS | GPIO18 | GPIO21 |
-| Φ2 (zegar ~1 MHz) | GPIO7 | GPIO32 |
-| /RES | GPIO8 | GPIO33 |
+
+| Sygnał            | ESP32-S3 | ESP32  |
+| ------------------ | -------- | ------ |
+| DATA (74HCT595 DS) | GPIO15   | GPIO13 |
+| SHIFT (SHCP)       | GPIO16   | GPIO14 |
+| LATCH (STCP)       | GPIO17   | GPIO27 |
+| /CS                | GPIO18   | GPIO21 |
+| Φ2 (zegar ~1 MHz) | GPIO7    | GPIO32 |
+| /RES               | GPIO8    | GPIO33 |
 
 Zasilanie: VCC 5 V; VDD **12 V dla 6581**, **9 V dla 8580** (12 V może uszkodzić 8580).
 Kondensatory filtra: 470 pF (6581) albo 22 nF (8580). Model układu ustawiasz w `REAL_SID_MODEL`
@@ -386,16 +401,17 @@ Pliki SID: High Voltage SID Collection, https://www.hvsc.c64.org/
 
 ### Flagi kompilacji (`platformio.ini`, `build_flags` danego środowiska)
 
-| Flaga | Znaczenie |
-|---|---|
+
+| Flaga                         | Znaczenie                                                                                               |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `-DSID_ENGINE=1` (domyślnie) | **reSID 0.16** (Dag Lem): emulacja cykl po cyklu, prawdziwe przebiegi łączone 6581/8580, wierny filtr |
-| `-DSID_ENGINE=0` | lekki silnik własny (`lib/SidEngine/sid.*`) |
-| `-DSID_ENGINE=2` | **prawdziwy układ 6581/8580** podłączony do ESP32 (`lib/SidEngine/real_sid_chip.*`) |
-| `-DSID_RESID_INTERPOLATE=1` | tylko reSID: próbkowanie z interpolacją, lepsza jakość, ok. 10× większe obciążenie CPU |
-| `-DSID_OUTPUT_INTERNAL_DAC` | wbudowany DAC klasycznego ESP32 zamiast I2S |
-| `-DPLAYER_SOURCE_SD=1` | źródło: karta SD |
-| `-DPLAYER_SOURCE_DEEPSID=1` | źródło: DeepSID przez internet (włączone w środowisku S3) |
-| `-DSID_OVERSAMPLE=2` | tylko silnik własny: mniejsze nadpróbkowanie (domyślnie 4), gdy ESP32 nie nadąża |
+| `-DSID_ENGINE=0`              | lekki silnik własny (`lib/SidEngine/sid.*`)                                                            |
+| `-DSID_ENGINE=2`              | **prawdziwy układ 6581/8580** podłączony do ESP32 (`lib/SidEngine/real_sid_chip.*`)                  |
+| `-DSID_RESID_INTERPOLATE=1`   | tylko reSID: próbkowanie z interpolacją, lepsza jakość, ok. 10× większe obciążenie CPU          |
+| `-DSID_OUTPUT_INTERNAL_DAC`   | wbudowany DAC klasycznego ESP32 zamiast I2S                                                             |
+| `-DPLAYER_SOURCE_SD=1`        | źródło: karta SD                                                                                     |
+| `-DPLAYER_SOURCE_DEEPSID=1`   | źródło: DeepSID przez internet (włączone w środowisku S3)                                         |
+| `-DSID_OVERSAMPLE=2`          | tylko silnik własny: mniejsze nadpróbkowanie (domyślnie 4), gdy ESP32 nie nadąża                   |
 
 Aktywny silnik i obciążenie CPU pokazuje komenda `info` oraz strona WWW.
 
@@ -426,11 +442,12 @@ prawdziwego SID-a:
 
 ## Źródła plików i foldery
 
-| Źródło | Flaga | Wgrywanie / usuwanie | Uwagi |
-|---|---|---|---|
-| Flash (LittleFS) | zawsze | tak | foldery tworzysz w `data/` przed `uploadfs`; cała ścieżka do ok. 63 znaków |
-| Karta SD | `PLAYER_SOURCE_SD=1` | tak | na kartę można skopiować całą kolekcję HVSC |
-| DeepSid | `PLAYER_SOURCE_DEEPSID=1` | nie (tylko odczyt) | HVSC przez internet, wymaga połączenia z WiFi |
+
+| Źródło        | Flaga                     | Wgrywanie / usuwanie | Uwagi                                                                         |
+| ---------------- | ------------------------- | -------------------- | ----------------------------------------------------------------------------- |
+| Flash (LittleFS) | zawsze                    | tak                  | foldery tworzysz w`data/` przed `uploadfs`; cała ścieżka do ok. 63 znaków |
+| Karta SD         | `PLAYER_SOURCE_SD=1`      | tak                  | na kartę można skopiować całą kolekcję HVSC                             |
+| DeepSid          | `PLAYER_SOURCE_DEEPSID=1` | nie (tylko odczyt)   | HVSC przez internet, wymaga połączenia z WiFi                               |
 
 - Źródło wybierasz z listy „Źródło” na stronie; foldery mają ikonę 📁, „..” to poziom wyżej.
 - Następny / poprzedni plik działa w bieżącym folderze.
@@ -449,10 +466,17 @@ Nowe źródło: wartość w `enum SourceType`, klasa pochodna `SidSource`, pozyc
 
 ## Panel WWW
 
+![](docs/images/www_main.png)
+
 `http://c64sid.local/` działa na telefonie i PC. Skórkę wybierasz z listy „Wygląd”:
 **Nowoczesny** (domyślny) albo **Commodore 64** (ekran C64, czcionka terminalowa, lista plików
 jak `LOAD"$",8`). Wybór jest zapamiętany w NVS. Jeśli na urządzeniu jest zainstalowana czcionka
 „C64 Pro Mono”, skórka C64 użyje jej automatycznie.
+
+Obie skórki są po polsku (domyślnie) i po angielsku – język zmieniasz listą „Język” / „Language”,
+wybór też jest zapamiętany w NVS (`lang` w `WebSettings.def`). Tłumaczenia są w słowniku `L`
+w skrypcie każdej strony; języki w `PlayerWebLangs.h`. Komunikaty błędów z samego odtwarzacza
+(np. „nie ma pliku”) zostają po polsku.
 
 Nowa skórka: skopiuj `PlayerWebPageC64.h` pod nową nazwą i zmień nazwę tablicy, dopisz wartość
 do `enum WebSkin` w `PlayerWebSkins.h` i linię do `WEB_SKINS` w `PlayerWebSkins.cpp`.
@@ -460,7 +484,7 @@ do `enum WebSkin` w `PlayerWebSkins.h` i linię do `WEB_SKINS` w `PlayerWebSkins
 API HTTP używane przez stronę (wszystko `GET` poza wgrywaniem): `/api/status`, `/api/list`,
 `/api/cd?dir=`, `/api/sources`, `/api/source`, `/api/play`, `/api/pause`, `/api/resume`,
 `/api/stop`, `/api/song`, `/api/file`, `/api/volume?v=`, `/api/mute`, `/api/model?m=`,
-`/api/delete`, `/api/skins`, `/api/skin?s=`, `POST /upload`.
+`/api/delete`, `/api/skins`, `/api/skin?s=`, `/api/langs`, `/api/lang?l=`, `POST /upload`.
 
 ## Komendy przez port szeregowy (115200)
 
@@ -500,15 +524,16 @@ void setup() {
 }
 ```
 
-| Grupa | Metody |
-|---|---|
-| odtwarzanie | `play(nazwa, utwór)`, `playIndex(n)`, `nextFile()`, `prevFile()`, `stop()`, `pause()`, `resume()`, `togglePause()` |
-| podutwory | `setSong(n)`, `nextSong()`, `prevSong()`, `restartSong()` |
-| dźwięk | `setVolume(0-100)`, `volumeUp()`, `volumeDown()`, `setMute()`, `toggleMute()`, `setModel(-1/0/1)`, `setTestTone()` |
-| źródła | `setSource(typ)`, `source()`, `sourceInfo()`, `sourceReady()`, `sourceError()`, `activeSource()` |
-| foldery | `cd(folder)`, `dir()`, `dir(typ)`, `setDir(typ, folder)`; każde źródło pamięta swój folder |
-| pliki | `files()` (foldery + pliki), `fileCount()`, `fileName(n)`, `removeFile(nazwa)`, `freeSpace()`, `uploadAllowed()`, `prepareUpload()`, `sanitizeName()` |
-| stan | `status()` (tytuł, autor, utwór, czas, głośność, obciążenie CPU...), `state()`, `isPlaying()`, `audioError()` |
+
+| Grupa       | Metody                                                                                                                                                |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| odtwarzanie | `play(nazwa, utwór)`, `playIndex(n)`, `nextFile()`, `prevFile()`, `stop()`, `pause()`, `resume()`, `togglePause()`                                   |
+| podutwory   | `setSong(n)`, `nextSong()`, `prevSong()`, `restartSong()`                                                                                             |
+| dźwięk    | `setVolume(0-100)`, `volumeUp()`, `volumeDown()`, `setMute()`, `toggleMute()`, `setModel(-1/0/1)`, `setTestTone()`                                    |
+| źródła   | `setSource(typ)`, `source()`, `sourceInfo()`, `sourceReady()`, `sourceError()`, `activeSource()`                                                      |
+| foldery     | `cd(folder)`, `dir()`, `dir(typ)`, `setDir(typ, folder)`; każde źródło pamięta swój folder                                                      |
+| pliki       | `files()` (foldery + pliki), `fileCount()`, `fileName(n)`, `removeFile(nazwa)`, `freeSpace()`, `uploadAllowed()`, `prepareUpload()`, `sanitizeName()` |
+| stan        | `status()` (tytuł, autor, utwór, czas, głośność, obciążenie CPU...), `state()`, `isPlaying()`, `audioError()`                                 |
 
 Metody zwracające `String` zwracają pusty napis przy powodzeniu, a w razie błędu jego opis.
 Pauza zatrzymuje muzykę w miejscu; wyciszenie tylko ścisza, a muzyka gra dalej.
@@ -539,19 +564,20 @@ a stary zapis zostanie pominięty.
 
 ## Budowa projektu
 
-| Ścieżka | Zawartość |
-|---|---|
-| `lib/Player/` | **biblioteka odtwarzacza**: audio I2S, źródła plików (`SidSource.h`: flash, SD, DeepSID) z folderami, sterowanie |
-| `lib/SidEngine/` | emulacja C64: CPU 6510 (`cpu6502.*`), ładowanie PSID/RSID (`sidplayer.*`), silniki SID (`sid.*`, `resid/`, `real_sid_chip.*`), wybór silnika (`sidchip.h`) |
-| `lib/NvsSettings/` | wspólny mechanizm ustawień w NVS (lista pól w pliku `.def`, zapis tylko zmian) |
-| `lib/PlayerMemory/` | ustawienia odtwarzacza (`PlayerMemory`, lista w `PlayerSettings.def`) |
-| `lib/PlayerWeb/` | przykład: panel WWW (`PlayerWeb`, skórki w `PlayerWebSkins.h`, strony w `PlayerWebPage*.h`) |
-| `lib/PlayerConsole/` | przykład: konsola szeregowa (`PlayerConsole`, `DualSerial` dla USB + UART) |
-| `src/main.cpp` | przykład: WiFi + Player + PlayerWeb + PlayerConsole |
-| `include/config.h` | WiFi, piny, częstotliwość próbkowania, głośność, prawdziwy SID |
-| `docs/REAL_SID.md` | instrukcja podłączenia prawdziwego SID-a |
-| `tools/sid2wav.cpp` | ten sam emulator na PC: `.sid` → `.wav` |
-| `data/` | pliki `.sid` wgrywane do flash przez `pio run -t uploadfs` |
+
+| Ścieżka            | Zawartość                                                                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lib/Player/`        | **biblioteka odtwarzacza**: audio I2S, źródła plików (`SidSource.h`: flash, SD, DeepSID) z folderami, sterowanie                                         |
+| `lib/SidEngine/`     | emulacja C64: CPU 6510 (`cpu6502.*`), ładowanie PSID/RSID (`sidplayer.*`), silniki SID (`sid.*`, `resid/`, `real_sid_chip.*`), wybór silnika (`sidchip.h`) |
+| `lib/NvsSettings/`   | wspólny mechanizm ustawień w NVS (lista pól w pliku`.def`, zapis tylko zmian)                                                                             |
+| `lib/PlayerMemory/`  | ustawienia odtwarzacza (`PlayerMemory`, lista w `PlayerSettings.def`)                                                                                        |
+| `lib/PlayerWeb/`     | przykład: panel WWW (`PlayerWeb`, skórki w `PlayerWebSkins.h`, strony w `PlayerWebPage*.h`)                                                                |
+| `lib/PlayerConsole/` | przykład: konsola szeregowa (`PlayerConsole`, `DualSerial` dla USB + UART)                                                                                  |
+| `src/main.cpp`       | przykład: WiFi + Player + PlayerWeb + PlayerConsole                                                                                                         |
+| `include/config.h`   | WiFi, piny, częstotliwość próbkowania, głośność, prawdziwy SID                                                                                       |
+| `docs/REAL_SID.md`   | instrukcja podłączenia prawdziwego SID-a                                                                                                                   |
+| `tools/sid2wav.cpp`  | ten sam emulator na PC:`.sid` → `.wav`                                                                                                                      |
+| `data/`              | pliki`.sid` wgrywane do flash przez `pio run -t uploadfs`                                                                                                    |
 
 ## Test na PC
 

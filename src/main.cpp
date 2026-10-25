@@ -1,12 +1,16 @@
-// ESP32 C64 SID Player - przyklad uzycia biblioteki Player.
-//
-//   lib/SidEngine      emulacja C64 (CPU 6510) i ukladu SID (wlasny silnik lub reSID)
-//   lib/Player         biblioteka odtwarzacza: audio I2S, pliki z flash, sterowanie
-//   lib/PlayerMemory   ustawienia zapamietywane w NVS (glosnosc, model SID, ostatni plik...)
-//   lib/PlayerWeb      przyklad: panel WWW (telefon / PC)
-//   lib/PlayerConsole  przyklad: komendy przez port szeregowy (COM)
-//
-// Ponizej mozna wylaczyc panel WWW albo konsole - odtwarzacz dziala bez nich.
+/**
+ * @file main.cpp
+ * @brief ESP32 C64 SID Player - example of using the Player library.
+ *
+ * @code
+ *   lib/SidEngine      C64 emulation (6510 CPU) and the SID chip (own engine, reSID or a real chip)
+ *   lib/Player         player library: I2S audio, files from flash / SD / DeepSID, control
+ *   lib/PlayerMemory   settings remembered in NVS (volume, SID model, last file...)
+ *   lib/PlayerWeb      example: web panel (phone / PC)
+ *   lib/PlayerConsole  example: commands over the serial port (COM)
+ * @endcode
+ * The web panel or the console can be disabled below - the player works without them.
+ */
 #include <Arduino.h>
 #include <WiFi.h>
 #include <ESPmDNS.h>
@@ -17,20 +21,24 @@
 #include <PlayerConsole.h>
 #include <DualSerial.h>
 
-#define USE_WEB      1
-#define USE_CONSOLE  1
-#define SAVE_EVERY_MS 5000   // co ile sprawdzac, czy ustawienia sie zmienily (oszczedza flash)
+#define USE_WEB      1     ///< 1 = start WiFi and the web panel.
+#define USE_CONSOLE  1     ///< 1 = serial console commands.
+#define SAVE_EVERY_MS 5000   ///< How often to check whether the settings changed, in ms (saves flash).
 
-static DualSerial Console;
-static Player player;
-static PlayerMemory memory;
+static DualSerial Console;     ///< Console on USB CDC and UART.
+static Player player;          ///< The SID player.
+static PlayerMemory memory;    ///< Settings remembered in NVS.
 #if USE_WEB
-static PlayerWeb web(player);
+static PlayerWeb web(player);  ///< Web panel.
 #endif
 #if USE_CONSOLE
-static PlayerConsole console(player, Console);
+static PlayerConsole console(player, Console);   ///< Serial command console.
 #endif
 
+/**
+ * @brief Connects to WIFI_SSID (10 s timeout) or, failing that, starts the AP_SSID access point;
+ *        then starts mDNS (HOSTNAME.local).
+ */
 static void connectWiFi() {
     WiFi.setHostname(HOSTNAME);
     bool connected = false;
@@ -55,6 +63,10 @@ static void connectWiFi() {
     if (MDNS.begin(HOSTNAME)) MDNS.addService("http", "tcp", 80);
 }
 
+/**
+ * @brief Arduino setup: starts the console, the player, restores the settings, WiFi and the web panel,
+ *        and auto-plays the last file (or the first one in the folder).
+ */
 void setup() {
     Console.begin(115200);
     delay(200);
@@ -93,6 +105,8 @@ void setup() {
         else if (e.length()) e = "";            // pusty folder - nic do grania
         if (e.length()) Console.println("blad: " + e);
     }
+    // read the current folder now, so that the first page load does not wait for it (DeepSid: seconds)
+    if (player.sourceReady()) player.files();
 #if USE_CONSOLE
     console.setMemory(&memory);
     console.start();
@@ -100,6 +114,9 @@ void setup() {
 #endif
 }
 
+/**
+ * @brief Arduino loop: serves the web panel and the console and saves changed settings every SAVE_EVERY_MS.
+ */
 void loop() {
 #if USE_WEB
     web.handle();

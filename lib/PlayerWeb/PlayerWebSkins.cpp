@@ -1,8 +1,12 @@
+/**
+ * @file PlayerWebSkins.cpp
+ * @brief Table of the available web panel skins.
+ */
 #include "PlayerWebSkins.h"
 #include "PlayerWebPage.h"
 #include "PlayerWebPageC64.h"
 
-// Kolejnosc taka sama jak w enum WebSkin.
+// Same order as in enum WebSkin.
 const WebSkinInfo WEB_SKINS[] = {
     {"modern", "Nowoczesny",   PLAYER_WEB_PAGE},
     {"c64",    "Commodore 64", PLAYER_WEB_PAGE_C64},

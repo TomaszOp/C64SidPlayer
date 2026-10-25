@@ -1,5 +1,7 @@
-# Generuje maly testowy plik PSID (gama C-dur) do sprawdzenia odtwarzacza.
-# Uzycie: python3 tools/make_demo_sid.py data/demo_gama.sid
+"""Generate a small test PSID file (C major scale) to check the player.
+
+Usage: python3 tools/make_demo_sid.py data/demo_gama.sid
+"""
 import struct,sys
 code = bytes.fromhex(
  "A90F8D18D4" "A9098D05D4" "A9A08D06D4" "A9088D03D4" "A9008510" "8511" "60"   # init $1000

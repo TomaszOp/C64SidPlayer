@@ -1,8 +1,15 @@
-// Skorka "Commodore 64": strona w stylu ekranu C64 (czcionka terminalowa,
-// niebieski ekran z ramka, lista plikow jak LOAD"$",8). To samo /api/... co PlayerWebPage.h.
+/**
+ * @file PlayerWebPageC64.h
+ * @brief "Commodore 64" skin: a page styled like the C64 screen (terminal font,
+ *        blue screen with a border, file list like LOAD"$",8).
+ *
+ * Uses the same /api/... as PlayerWebPage.h.
+ * Texts in Polish and English: dictionary L in the script, languages in PlayerWebLangs.h.
+ */
 #pragma once
 #include <pgmspace.h>
 
+/// Complete HTML page of the Commodore 64 skin, served from flash (PROGMEM).
 static const char PLAYER_WEB_PAGE_C64[] PROGMEM = R"HTML(<!doctype html>
 <html lang="pl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -67,25 +74,26 @@ li .t{min-width:4ch}
  <p id="tech" class="dim wrap"></p>
 
  <div class="ctl">
-  <button id="fprev" title="Poprzedni plik">&lt;F</button>
-  <button id="prev" title="Poprzedni podutwor">&lt;T</button>
-  <button id="pp" title="Graj / pauza">RUN</button>
-  <button id="next" title="Nastepny podutwor">T&gt;</button>
-  <button id="fnext" title="Nastepny plik">F&gt;</button>
+  <button id="fprev" title="Poprzedni plik" data-it="fprev">&lt;F</button>
+  <button id="prev" title="Poprzedni podutwor" data-it="prev">&lt;T</button>
+  <button id="pp" title="Graj / pauza" data-it="pp">RUN</button>
+  <button id="next" title="Nastepny podutwor" data-it="next">T&gt;</button>
+  <button id="fnext" title="Nastepny plik" data-it="fnext">F&gt;</button>
  </div>
  <div class="ctl ctl2">
   <button id="stop" title="Stop">STOP</button>
-  <button id="mute" title="Wycisz">MUTE</button>
+  <button id="mute" title="Wycisz" data-it="mute">MUTE</button>
  </div>
  <div class="ln"><span>VOLUME</span><input type="range" id="vol" min="0" max="100"><span id="volv"></span></div>
  <div class="ln"><span>SID</span>
   <select id="model"><option value="-1">AUTO</option><option value="0">6581</option><option value="1">8580</option></select></div>
- <div class="ln"><span>WYGLAD</span><select id="skin"></select></div>
+ <div class="ln"><span data-i="look">WYGLAD</span><select id="skin"></select></div>
+ <div class="ln"><span data-i="lang">JEZYK</span><select id="lang"></select></div>
 
  <div class="gap"></div>
  <p>READY.</p>
  <p id="save" class="wrap">SAVE"*.SID",8</p>
- <div id="drop" tabindex="0">DOTKNIJ ALBO UPUSC TU PLIKI .SID</div>
+ <div id="drop" tabindex="0" data-i="drop">DOTKNIJ ALBO UPUSC TU PLIKI .SID</div>
  <input type="file" id="fileIn" multiple>
  <div id="bar"><i id="barI"></i></div>
 
@@ -93,7 +101,7 @@ li .t{min-width:4ch}
  <p>READY.</p>
  <p id="loaddir">LOAD"$",8</p>
  <div class="ln" id="srcRow"><span>DRIVE</span><select id="src"></select></div>
- <div class="ln"><span>FIND</span><input id="search" type="search" placeholder="NAZWA..." autocomplete="off"></div>
+ <div class="ln"><span>FIND</span><input id="search" type="search" placeholder="NAZWA..." data-ip="search" autocomplete="off"></div>
  <p style="margin-top:8px" class="wrap">0 <span id="hdr" style="background:var(--txt);color:var(--scr)"></span></p>
  <ul id="list"></ul>
  <button id="more" style="width:100%;margin-top:6px;display:none">MORE</button>
@@ -105,20 +113,51 @@ li .t{min-width:4ch}
 <script>
 const $=id=>document.getElementById(id);
 let st={},files=[],msgT,li={},listKey='',sources=[];
+// translations: plain texts or functions with parameters; a missing key falls back to Polish
+const L={
+pl:{fprev:'Poprzedni plik',prev:'Poprzedni podutwor',pp:'Graj / pauza',next:'Nastepny podutwor',fnext:'Nastepny plik',mute:'Wycisz',
+ look:'WYGLAD',lang:'JEZYK',drop:'DOTKNIJ ALBO UPUSC TU PLIKI .SID',search:'NAZWA...',pick:'WYBIERZ PLIK Z LISTY ALBO WGRAJ NOWY',
+ open:'Otworz',play:'Graj',del:'Usun',empty:'PUSTY FOLDER',wp:'?WRITE PROTECT ERROR (WGRYWANIE WYLACZONE)',na:' (BRAK)',err:n=>'BLAD '+n,
+ saved:(n,k)=>`ZAPISANO ${n}${k?', POMINIETO '+k:''}`},
+en:{fprev:'Previous file',prev:'Previous subtune',pp:'Play / pause',next:'Next subtune',fnext:'Next file',mute:'Mute',
+ look:'LOOK',lang:'LANGUAGE',drop:'TAP OR DROP .SID FILES HERE',search:'NAME...',pick:'CHOOSE A FILE FROM THE LIST OR UPLOAD A NEW ONE',
+ open:'Open',play:'Play',del:'Delete',empty:'EMPTY FOLDER',wp:'?WRITE PROTECT ERROR',na:' (NOT PRESENT)',err:n=>'ERROR '+n,
+ saved:(n,k)=>`SAVED ${n}${k?', SKIPPED '+k:''}`,skin_modern:'Modern',src_flash:'Flash memory',src_sd:'SD card'}};
+// the server sends the saved language in a cookie with the page, so it is right before the first draw
+let lang=(document.cookie.match(/(?:^|;\s*)lang=(\w+)/)||[])[1];if(!L[lang])lang='pl';
+const T=(k,...a)=>{const v=k in L[lang]?L[lang][k]:L.pl[k];return typeof v==='function'?v(...a):v};
+function applyLang(){
+ document.documentElement.lang=lang;
+ document.querySelectorAll('[data-i]').forEach(e=>e.textContent=T(e.dataset.i));
+ document.querySelectorAll('[data-it]').forEach(e=>e.title=T(e.dataset.it));
+ document.querySelectorAll('[data-ip]').forEach(e=>e.placeholder=T(e.dataset.ip));
+ $('lang').value=lang;
+}
+applyLang();
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const blk=b=>Math.ceil((b||0)/254);
 const fmt=ms=>{const s=Math.floor((ms||0)/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
 function msg(t,bad){const e=$('msg');e.textContent=bad?'?'+t+' ERROR':t;e.className=bad?'err wrap':'wrap';clearTimeout(msgT);msgT=setTimeout(()=>e.textContent='',4000)}
 async function api(p){try{const r=await fetch('/api/'+p);const j=await r.json();if(j.error)msg(j.error,1);refresh();return j}catch(e){msg('DEVICE NOT PRESENT',1)}}
 
+let polling=0;
 async function refresh(){
- try{st=await (await fetch('/api/status')).json()}catch(e){return}
+ // only one status request at a time: while the ESP is busy (e.g. a DeepSid listing) the polls
+ // would pile up beyond what the ESP accepts and the browser would retry them after seconds
+ if(polling){polling=2;return}polling=1;
+ // 3 s limit: a request stuck while the ESP was restarting must not stop the polling
+ try{st=await (await fetch('/api/status',{signal:AbortSignal.timeout(3000)})).json()}catch(e){polling=0;return}
+ if(polling==2)setTimeout(refresh,0);polling=0;
+ // the ESP answers again - load what failed while it was unreachable (e.g. right after flashing)
+ if(!sources.length)loadSources();
+ // language changed here or on another device
+ if(st.lang&&st.lang!==lang&&L[st.lang]){lang=st.lang;applyLang();loadSkins();loadSources()}
  const has=!!st.name;
  $('load').textContent=has?`LOAD"${st.file}",8,1`:'LOAD"*",8,1';
  $('info').innerHTML=has?
   `<p>NAME:&nbsp;&nbsp; ${esc(st.name)}</p><p>AUTHOR: ${esc(st.author||'?')}</p><p>YEAR:&nbsp;&nbsp; ${esc(st.released||'?')}</p>`+
   `<p>TUNE:&nbsp;&nbsp; ${st.song}/${st.songs} &nbsp;TIME ${fmt(st.ms)}${st.state==='paused'?' &nbsp;BREAK':''}</p>`
-  :'<p>SEARCHING FOR *</p><p class="dim">WYBIERZ PLIK Z LISTY ALBO WGRAJ NOWY</p>';
+  :'<p>SEARCHING FOR *</p><p class="dim">'+esc(T('pick'))+'</p>';
  $('tech').textContent=(has?`${st.type} ${st.clock} SID ${st.model} ${st.hz} HZ · `:'')+`${st.engine} · CPU ${st.load}%`;
  $('pp').textContent=st.state==='playing'?'PAUSE':'RUN';
  $('mute').classList.toggle('on',!!st.muted);
@@ -133,7 +172,7 @@ async function refresh(){
 }
 // lista biezacego folderu, w porcjach po 100
 async function loadList(more){
- let j;try{j=await (await fetch('/api/list?count=100&offset='+(more?files.length:0))).json()}catch(e){return}
+ let j;try{j=await (await fetch('/api/list?count=100&offset='+(more?files.length:0))).json()}catch(e){if(!more)listKey='';return}   // '' = retry on the next refresh()
  files=more?files.concat(j.items):j.items;li=j;listKey=j.source+':'+j.dir;
  if(!more)$('search').value='';
  render();
@@ -149,30 +188,35 @@ function render(){
  $('hdr').textContent=`"${(li.source||'')+':'+(li.dir||'/')}" ${dv} 2A`;
  let h=li.dir&&li.dir!=='/'?'<li data-act="up"><span class="b">0</span><span class="n" data-act="up">".."</span><span class="t">DIR</span></li>':'';
  h+=l.map(f=>f.dir?`<li data-d="${esc(f.name)}"><span class="b">0</span><span class="n" data-act="cd">"${esc(f.name)}"</span><span class="t">DIR</span>
-  <button data-act="cd" title="Otworz">CD</button></li>`
+  <button data-act="cd" title="${T('open')}">CD</button></li>`
   :`<li data-f="${esc(full(f.name))}" class="${st.fileSource===st.source&&full(f.name)===st.file?'on':''}">
   <span class="b">${blk(f.size)}</span><span class="n" data-act="play">"${esc(f.name.replace(/\.sid$/i,'').replace(/_/g,' '))}"</span><span class="t">SID</span>
-  <button data-act="play" title="Graj">RUN</button>${li.del?'<button class="del" data-act="del" title="Usun">DEL</button>':''}</li>`).join('');
+  <button data-act="play" title="${T('play')}">RUN</button>${li.del?`<button class="del" data-act="del" title="${T('del')}">DEL</button>`:''}</li>`).join('');
  if(li.ready===false)h+=`<li class="err">?${esc((li.error||'DEVICE NOT PRESENT').toUpperCase())} ERROR</li>`;
- else if(!files.length)h+='<li class="dim">PUSTY FOLDER</li>';
+ else if(!files.length)h+='<li class="dim">'+T('empty')+'</li>';
  $('list').innerHTML=h;
  $('more').style.display=files.length<li.total?'block':'none';
  $('more').textContent=`MORE (${files.length}/${li.total})`;
  $('drop').style.display=li.upload?'block':'none';
- $('save').textContent=li.upload?`SAVE"${li.dir==='/'?'':li.dir+'/'}*.SID",${dv}`:'?WRITE PROTECT ERROR (WGRYWANIE WYLACZONE)';
+ $('save').textContent=li.upload?`SAVE"${li.dir==='/'?'':li.dir+'/'}*.SID",${dv}`:T('wp');
 }
 async function loadSources(){
  try{const j=await (await fetch('/api/sources')).json();sources=j.sources;
-  $('src').innerHTML=sources.map((s,i)=>`<option value="${esc(s.id)}">${8+i}: ${esc(s.name)}${s.ready?'':' (BRAK)'}</option>`).join('');
+  $('src').innerHTML=sources.map((s,i)=>`<option value="${esc(s.id)}">${8+i}: ${esc(T('src_'+s.id)||s.name)}${s.ready?'':T('na')}</option>`).join('');
   $('src').value=j.current;$('srcRow').style.display=sources.length>1?'flex':'none';render()}catch(e){}
 }
 $('src').onchange=e=>api('source?s='+encodeURIComponent(e.target.value)).then(loadSources);
 $('more').onclick=()=>loadList(true);
 async function loadSkins(){
  try{const s=await (await fetch('/api/skins')).json();
-  $('skin').innerHTML=s.skins.map(k=>`<option value="${esc(k.id)}">${esc(k.name)}</option>`).join('');$('skin').value=s.current}catch(e){}
+  $('skin').innerHTML=s.skins.map(k=>`<option value="${esc(k.id)}">${esc(T('skin_'+k.id)||k.name)}</option>`).join('');$('skin').value=s.current}catch(e){}
 }
 $('skin').onchange=async e=>{await api('skin?s='+encodeURIComponent(e.target.value));location.reload()};
+async function loadLangs(){
+ try{const s=await (await fetch('/api/langs')).json();
+  $('lang').innerHTML=s.langs.map(k=>`<option value="${esc(k.id)}">${esc(k.name)}</option>`).join('');$('lang').value=lang}catch(e){}
+}
+$('lang').onchange=e=>api('lang?l='+encodeURIComponent(e.target.value));
 $('list').onclick=e=>{
  const a=e.target.closest('[data-act]');if(!a)return;const r=a.closest('li'),act=a.dataset.act;
  if(act==='up')return api('cd?dir=..');
@@ -203,7 +247,7 @@ fin.onchange=()=>{upload([...fin.files]);fin.value=''};
 function send(f,onp){return new Promise(res=>{
  const x=new XMLHttpRequest(),d=new FormData();d.append('file',f,f.name);
  x.upload.onprogress=e=>e.lengthComputable&&onp(e.loaded/e.total);
- x.onload=()=>{let j={};try{j=JSON.parse(x.responseText)}catch(e){}res(j.error||(x.status==200?'':'BLAD '+x.status))};
+ x.onload=()=>{let j={};try{j=JSON.parse(x.responseText)}catch(e){}res(j.error||(x.status==200?'':T('err',x.status)))};
  x.onerror=()=>res('DEVICE NOT PRESENT');
  x.open('POST','/upload');x.send(d)})}
 async function upload(list){
@@ -216,8 +260,8 @@ async function upload(list){
   if(e)errs.push(f.name+': '+e);else ok++;
  }
  bi.style.width='100%';setTimeout(()=>{bar.style.display='none';bi.style.width='0'},800);
- if(errs.length)msg(errs.join(' / '),1);else msg(`ZAPISANO ${ok}${skip?', POMINIETO '+skip:''}`);
+ if(errs.length)msg(errs.join(' / '),1);else msg(T('saved',ok,skip));
  loadList();refresh();
 }
-loadSkins();loadSources();refresh();setInterval(refresh,1000);
+loadSkins();loadLangs();loadSources();refresh();setInterval(refresh,1000);
 </script></body></html>)HTML";

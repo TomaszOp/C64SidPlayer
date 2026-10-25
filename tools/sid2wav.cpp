@@ -1,15 +1,35 @@
-// Narzedzie na PC: renderuje plik .sid do .wav tym samym silnikiem co ESP32.
-// Kompilacja:  g++ -O2 -DSID_ENGINE=1 -Ilib/SidEngine tools/sid2wav.cpp lib/SidEngine/*.cpp lib/SidEngine/resid/resid.cpp -o sid2wav
-//              (-DSID_ENGINE=0 = wlasny silnik)
-// Uzycie:      ./sid2wav utwor.sid wynik.wav [sekundy] [nr_utworu]
+/// @file sid2wav.cpp
+/// @brief PC tool: renders a .sid file to .wav with the same engine as the ESP32.
+///
+/// @code
+/// Build:  g++ -O2 -DSID_ENGINE=1 -Ilib/SidEngine tools/sid2wav.cpp lib/SidEngine/*.cpp lib/SidEngine/resid/resid.cpp -o sid2wav
+///         (-DSID_ENGINE=0 = own engine)
+/// Usage:  ./sid2wav tune.sid output.wav [seconds] [subtune]
+/// @endcode
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
 #include "sidplayer.h"
 
+/**
+ * @brief Writes a 32-bit value in host byte order (little-endian on PC).
+ * @param f Output file.
+ * @param v Value.
+ */
 static void put32(FILE* f, uint32_t v) { fwrite(&v, 4, 1, f); }
+/**
+ * @brief Writes a 16-bit value in host byte order (little-endian on PC).
+ * @param f Output file.
+ * @param v Value.
+ */
 static void put16(FILE* f, uint16_t v) { fwrite(&v, 2, 1, f); }
 
+/**
+ * @brief Renders a .sid file into a 44.1 kHz mono 16-bit WAV file.
+ * @param argc Argument count.
+ * @param argv input.sid output.wav [seconds (default 30)] [subtune (default 0 = from the file)].
+ * @return 0 on success, 1 on error.
+ */
 int main(int argc, char** argv) {
     if (argc < 3) { fprintf(stderr, "uzycie: %s plik.sid wynik.wav [sekundy] [utwor]\n", argv[0]); return 1; }
     int seconds = argc > 3 ? atoi(argv[3]) : 30;
