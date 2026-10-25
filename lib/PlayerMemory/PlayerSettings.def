@@ -1,24 +1,24 @@
-// Lista zapamietywanych ustawien - jedna linia na ustawienie.
+// List of remembered settings - one line per setting.
 //
-//   SETTING(typ, nazwa, klucz NVS, wartosc domyslna)
+//   SETTING(type, name, NVS key, default value)
 //
-// Ustawienia samego odtwarzacza (biblioteka Player). Ustawienia panelu WWW sa
-// osobno, w lib/PlayerWeb/WebSettings.def.
-// Nowe ustawienie: dopisz linie ponizej, a pole PlayerMemory::nazwa oraz jego
-// odczyt, zapis i przywracanie domyslnej wartosci powstana same.
-// Dozwolone typy i zasady: zobacz lib/NvsSettings/NvsSettings.h.
-// Gdy zmienisz typ albo znaczenie istniejacego ustawienia, zwieksz
-// NVS_VERSION w PlayerMemory.h - stare zapisy zostana wtedy pominiete.
+// Settings of the player itself (Player library). The web panel settings are
+// separate, in lib/PlayerWeb/WebSettings.def.
+// New setting: add a line below, and the field PlayerMemory::name together with its
+// reading, writing and restoring of the default value are generated automatically.
+// Allowed types and rules: see lib/NvsSettings/NvsSettings.h.
+// When you change the type or meaning of an existing setting, increase
+// NVS_VERSION in PlayerMemory.h - old stored data will then be ignored.
 
-//      typ      nazwa       klucz    domyslnie
-SETTING(uint8_t, volume,     "vol",   56)      // glosnosc 0..100
-SETTING(bool,    muted,      "mute",  false)   // wyciszenie
+//      type     name        key      default
+SETTING(uint8_t, volume,     "vol",   56)      // volume 0..100
+SETTING(bool,    muted,      "mute",  false)   // mute
 SETTING(int8_t,  sidModel,   "model", -1)      // -1 auto, 0 = 6581, 1 = 8580
-SETTING(bool,    autoPlay,   "auto",  true)    // graj po wlaczeniu zasilania
-SETTING(uint8_t, source,     "src",   0)       // aktywne zrodlo plikow (enum SourceType)
+SETTING(bool,    autoPlay,   "auto",  true)    // play after power-on
+SETTING(uint8_t, source,     "src",   0)       // active file source (enum SourceType)
 
-// Dla kazdego zrodla: biezacy folder, ostatni plik i jego podutwor (0 = domyslny).
-// Nowe zrodlo = trzy linie tutaj i jedna pozycja w PlayerMemory::forSource().
+// For every source: current folder, last file and its subtune (0 = default).
+// New source = three lines here and one entry in PlayerMemory::forSource().
 SETTING(String,  dirFlash,   "dirF",  "/")
 SETTING(String,  fileFlash,  "fileF", "")
 SETTING(uint8_t, songFlash,  "songF", 0)

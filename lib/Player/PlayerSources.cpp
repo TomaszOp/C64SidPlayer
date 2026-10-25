@@ -1,4 +1,9 @@
-// Lista zrodel plikow - tu wlaczasz zrodla i ustawiasz, co wolno uzytkownikowi.
+/**
+ * @file PlayerSources.cpp
+ * @brief List of file sources - this is where sources are enabled and user permissions are set.
+ *
+ * Also contains sourceInfo(), sourceImpl() and the SourcePath helpers.
+ */
 #include "SidSource.h"
 #include "FsSource.h"
 #include "DeepSidSource.h"

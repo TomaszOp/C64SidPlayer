@@ -1,7 +1,17 @@
+/**
+ * @file NvsSettings.cpp
+ * @brief Implementation of NvsSettings on top of the Preferences library (visitor-based load/save/print).
+ */
 #include "NvsSettings.h"
 #include <Preferences.h>
 
-// Odczyt / zapis / wypisanie jednego pola - wersje dla kazdego obslugiwanego typu.
+// Reading / writing / printing one field - overloads for every supported type.
+/**
+ * @brief Reads one value from NVS (get() overloads, one per supported type).
+ * @param p Open Preferences.
+ * @param k NVS key.
+ * @param v Value; keeps its current value when the key is missing.
+ */
 static void get(Preferences& p, const char* k, bool& v)     { v = p.getBool(k, v); }
 static void get(Preferences& p, const char* k, uint8_t& v)  { v = p.getUChar(k, v); }
 static void get(Preferences& p, const char* k, int8_t& v)   { v = p.getChar(k, v); }
@@ -12,6 +22,13 @@ static void get(Preferences& p, const char* k, int32_t& v)  { v = p.getLong(k, v
 static void get(Preferences& p, const char* k, float& v)    { v = p.getFloat(k, v); }
 static void get(Preferences& p, const char* k, String& v)   { v = p.getString(k, v); }
 
+/**
+ * @brief Writes one value to NVS (put() overloads, one per supported type).
+ * @param p Open Preferences.
+ * @param k NVS key.
+ * @param v Value.
+ * @return true if written successfully.
+ */
 static bool put(Preferences& p, const char* k, bool v)          { return p.putBool(k, v); }
 static bool put(Preferences& p, const char* k, uint8_t v)       { return p.putUChar(k, v); }
 static bool put(Preferences& p, const char* k, int8_t v)        { return p.putChar(k, v); }
@@ -22,6 +39,11 @@ static bool put(Preferences& p, const char* k, int32_t v)       { return p.putLo
 static bool put(Preferences& p, const char* k, float v)         { return p.putFloat(k, v); }
 static bool put(Preferences& p, const char* k, const String& v) { return p.putString(k, v) == v.length(); }
 
+/**
+ * @brief Prints one value (printValue() overloads; bool as "tak"/"nie", String in quotes).
+ * @param o Output.
+ * @param v Value.
+ */
 static void printValue(Print& o, bool v)          { o.print(v ? "tak" : "nie"); }
 static void printValue(Print& o, uint8_t v)       { o.print(v); }
 static void printValue(Print& o, int8_t v)        { o.print(int(v)); }
@@ -32,7 +54,13 @@ static void printValue(Print& o, int32_t v)       { o.print(v); }
 static void printValue(Print& o, float v)         { o.print(v, 2); }
 static void printValue(Print& o, const String& v) { o.print('"'); o.print(v); o.print('"'); }
 
-// Wartosc w NVS rozna od biezacej (albo jej brak)?
+/**
+ * @brief Checks whether the value in NVS differs from the current one (or is missing).
+ * @param p Open Preferences.
+ * @param k NVS key.
+ * @param v Current value.
+ * @return true if different or missing.
+ */
 template <class T> static bool differs(Preferences& p, const char* k, const T& v) {
     if (!p.isKey(k)) return true;
     T stored = v;
@@ -40,9 +68,16 @@ template <class T> static bool differs(Preferences& p, const char* k, const T& v
     return !(stored == v);
 }
 
-// Zamienia jedna operacje (szablon) na Visitor dla wszystkich typow.
+/**
+ * @brief Turns one operation (a template functor) into a Visitor for all types.
+ * @tparam Op Functor with operator()(key, name, value&, default).
+ */
 template <class Op> struct VisitorFor : NvsSettings::Visitor {
-    Op op;
+    Op op;   ///< Operation called for every field.
+    /**
+     * @brief Wraps an operation.
+     * @param o Operation (copied).
+     */
     explicit VisitorFor(const Op& o) : op(o) {}
 #define NVS_VISIT_TYPE(T) void field(const char* k, const char* n, T& v, const T& d) override { op(k, n, v, d); }
     NVS_VISIT_TYPE(bool) NVS_VISIT_TYPE(uint8_t) NVS_VISIT_TYPE(int8_t)
@@ -50,29 +85,39 @@ template <class Op> struct VisitorFor : NvsSettings::Visitor {
     NVS_VISIT_TYPE(int32_t) NVS_VISIT_TYPE(float) NVS_VISIT_TYPE(String)
 #undef NVS_VISIT_TYPE
 };
+/**
+ * @brief Creates a VisitorFor with the type deduced from the argument.
+ * @param op Operation.
+ * @return Visitor calling op for every field.
+ */
 template <class Op> static VisitorFor<Op> visitorFor(const Op& op) { return VisitorFor<Op>(op); }
 
-static const char* VERSION_KEY = "_ver";
+static const char* VERSION_KEY = "_ver";   ///< NVS key holding the format version.
 
+/** @brief Operation: sets the field to its default value. */
 struct OpDefault { template <class T> void operator()(const char*, const char*, T& v, const T& d) { v = d; } };
+/** @brief Operation: reads the field from NVS. */
 struct OpGet {
-    Preferences* p;
+    Preferences* p;   ///< Open Preferences.
     template <class T> void operator()(const char* k, const char*, T& v, const T&) { get(*p, k, v); }
 };
+/** @brief Operation: writes the field to NVS when it differs (or always when all is set). */
 struct OpPut {
-    Preferences* p; bool* ok; bool all;
+    Preferences* p; bool* ok; bool all;   ///< Open Preferences; cleared on a write error; write every field.
     template <class T> void operator()(const char* k, const char*, T& v, const T&) {
         if (all || differs(*p, k, v)) *ok = put(*p, k, v) && *ok;
     }
 };
+/** @brief Operation: sets *changed when the field differs from NVS. */
 struct OpChanged {
-    Preferences* p; bool* changed;
+    Preferences* p; bool* changed;   ///< Open Preferences; result flag.
     template <class T> void operator()(const char* k, const char*, T& v, const T&) {
         if (!*changed && differs(*p, k, v)) *changed = true;
     }
 };
+/** @brief Operation: prints "  name = value". */
 struct OpPrint {
-    Print* out;
+    Print* out;   ///< Output.
     template <class T> void operator()(const char*, const char* n, T& v, const T&) {
         out->print("  "); out->print(n); out->print(" = "); printValue(*out, v); out->println();
     }

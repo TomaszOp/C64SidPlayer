@@ -1,3 +1,7 @@
+/**
+ * @file DeepSidSource.cpp
+ * @brief Implementation of DeepSidSource: DeepSID REST API client and streaming JSON parsing.
+ */
 #include "DeepSidSource.h"
 #if PLAYER_SOURCE_DEEPSID
 #include <WiFi.h>
@@ -5,41 +9,72 @@
 #include <HTTPClient.h>
 #include <functional>
 
-static const char* DEEPSID_URL = "https://deepsid.chordian.net";
-static const char* HVSC_ROOT = "_High Voltage SID Collection";
-static const uint32_t NET_RETRY_MS = 5000;      // po bledzie sieci kolejna proba najwczesniej po 5 s
-static const uint16_t HTTP_TIMEOUT_MS = 15000;
-// Katalog glowny HVSC - API nie listuje katalogu glownego (DOCUMENTS i UPDATE pomijamy).
+static const char* DEEPSID_URL = "https://deepsid.chordian.net";   ///< DeepSID server address.
+static const char* HVSC_ROOT = "_High Voltage SID Collection";      ///< HVSC root folder name in DeepSID paths.
+static const uint32_t NET_RETRY_MS = 5000;      ///< After a network error, the next attempt no sooner than after 5 s.
+static const uint16_t HTTP_TIMEOUT_MS = 15000;  ///< HTTP connect and read timeout in ms.
+/// HVSC root folders - the API does not list the root folder (DOCUMENTS and UPDATE are skipped).
 static const char* const ROOT_DIRS[] = {"DEMOS", "GAMES", "MUSICIANS"};
 
 namespace {
 
-// Strumieniowy czytnik JSON: nie trzyma calej odpowiedzi w pamieci, tylko wywoluje
-// cb(glebokosc, klucz, wartosc) dla kazdej wartosci prostej (napis, liczba, true...).
-// Glebokosc 1 = obiekt glowny, 2 = obiekt w nim zagniezdzony.
-// Stream, bo tego wymaga HTTPClient::writeToStream() - uzywany jest tylko zapis.
+/**
+ * @brief Streaming JSON scanner: does not keep the whole response in memory, it only calls
+ *        cb(depth, key, value) for every simple value (string, number, true...).
+ *
+ * Depth 1 = the top-level object, 2 = an object nested in it.
+ * It is a Stream because HTTPClient::writeToStream() requires one - only writing is used.
+ */
 class JsonScan : public Stream {
 public:
+    /** @brief Called for every simple value: nesting depth, key ("" in arrays) and the value as text. */
     typedef std::function<void(int depth, const String& key, const String& value)> Callback;
+    /**
+     * @brief Creates the scanner.
+     * @param cb Callback invoked for every simple value.
+     */
     explicit JsonScan(Callback cb) : cb_(cb) {}
+    /**
+     * @brief Feeds one byte of JSON.
+     * @param c Byte.
+     * @return 1.
+     */
     size_t write(uint8_t c) override { feed(char(c)); return 1; }
+    /**
+     * @brief Feeds a block of JSON.
+     * @param buf Data.
+     * @param n   Length.
+     * @return n.
+     */
     size_t write(const uint8_t* buf, size_t n) override {
         for (size_t i = 0; i < n; i++) feed(char(buf[i]));
         return n;
     }
+    /** @brief Not readable. @return 0. */
     int available() override { return 0; }
+    /** @brief Not readable. @return -1. */
     int read() override { return -1; }
+    /** @brief Not readable. @return -1. */
     int peek() override { return -1; }
 
 private:
-    static const size_t MAX_STR = 512;          // dluzsze napisy (np. opisy STIL) sa obcinane
+    static const size_t MAX_STR = 512;          ///< Longer strings (e.g. STIL descriptions) are truncated.
 
+    /**
+     * @brief Appends a character to the current string (up to MAX_STR).
+     * @param c Character.
+     */
     void add(char c) { if (str_.length() < MAX_STR) str_ += c; }
+    /**
+     * @brief Appends a \uXXXX code point to the current string as UTF-8.
+     * @param c Code point (BMP).
+     */
     void addCode(uint16_t c) {                  // \uXXXX -> UTF-8
         if (c < 0x80) { add(char(c)); return; }
         if (c < 0x800) { add(char(0xC0 | (c >> 6))); add(char(0x80 | (c & 0x3F))); return; }
         add(char(0xE0 | (c >> 12))); add(char(0x80 | ((c >> 6) & 0x3F))); add(char(0x80 | (c & 0x3F)));
     }
+    /** @brief Reports the pending value (string or token) to the callback and clears key/token. */
     void flush() {
         if (haveStr_) cb_(depth_, key_, str_);
         else if (tok_.length()) cb_(depth_, key_, tok_);
@@ -48,6 +83,10 @@ private:
         key_ = "";
     }
 
+    /**
+     * @brief Processes one character of JSON.
+     * @param c Character.
+     */
     void feed(char c) {
         if (inStr_) {
             if (uni_ >= 0) {
@@ -78,37 +117,64 @@ private:
         }
     }
 
-    Callback cb_;
-    int depth_ = 0;
-    bool inStr_ = false, esc_ = false, haveStr_ = false;
-    int uni_ = -1;
-    uint16_t code_ = 0;
-    String str_, key_, tok_;
+    Callback cb_;               ///< Value callback.
+    int depth_ = 0;             ///< Current object/array nesting depth.
+    bool inStr_ = false, esc_ = false, haveStr_ = false;   ///< Inside a string / after a backslash / a complete string is pending.
+    int uni_ = -1;              ///< Number of \u hex digits read so far, -1 = not in a \u escape.
+    uint16_t code_ = 0;         ///< \u code point being assembled.
+    String str_, key_, tok_;    ///< Current string, current key, current unquoted token.
 };
 
-// Bufor na pobierany plik .sid (tylko zapis, jak JsonScan).
+/**
+ * @brief Buffer for the downloaded .sid file (write-only Stream, like JsonScan).
+ */
 class BufPrint : public Stream {
 public:
+    /**
+     * @brief Wraps a caller-owned buffer.
+     * @param buf Buffer.
+     * @param cap Buffer capacity in bytes.
+     */
     BufPrint(uint8_t* buf, size_t cap) : buf_(buf), cap_(cap) {}
+    /**
+     * @brief Appends one byte.
+     * @param c Byte.
+     * @return 1, or 0 when the buffer is full.
+     */
     size_t write(uint8_t c) override { return write(&c, 1); }
+    /**
+     * @brief Appends bytes; data beyond the capacity is dropped and sets overflow().
+     * @param b Data.
+     * @param n Length.
+     * @return Number of bytes stored.
+     */
     size_t write(const uint8_t* b, size_t n) override {
         if (len_ + n > cap_) { overflow_ = true; n = cap_ - len_; }
         memcpy(buf_ + len_, b, n);
         len_ += n;
         return n;
     }
+    /** @brief Not readable. @return 0. */
     int available() override { return 0; }
+    /** @brief Not readable. @return -1. */
     int read() override { return -1; }
+    /** @brief Not readable. @return -1. */
     int peek() override { return -1; }
+    /** @brief Number of bytes stored. @return Length. */
     size_t length() const { return len_; }
+    /** @brief Whether data was dropped because the buffer was full. @return true on overflow. */
     bool overflow() const { return overflow_; }
 private:
-    uint8_t* buf_;
-    size_t cap_, len_ = 0;
-    bool overflow_ = false;
+    uint8_t* buf_;            ///< Destination buffer (not owned).
+    size_t cap_, len_ = 0;    ///< Capacity and bytes stored.
+    bool overflow_ = false;   ///< More data arrived than fits.
 };
 
-// Koduje sciezke do adresu URL ("/" zostaje, spacja -> %20).
+/**
+ * @brief Percent-encodes a path for a URL ("/" stays, space -> %20).
+ * @param s Path.
+ * @return Encoded path.
+ */
 String urlEncode(const String& s) {
     static const char* hex = "0123456789ABCDEF";
     String out;
@@ -120,15 +186,25 @@ String urlEncode(const String& s) {
     return out;
 }
 
-// Odpowiedz serwera -> czytnik JSON; zwraca blad albo "".
+/**
+ * @brief Streams the server response into the JSON scanner.
+ * @param http HTTP client after a successful GET.
+ * @param scan JSON scanner.
+ * @return "" on success, otherwise an error description.
+ */
 String readJson(HTTPClient& http, JsonScan& scan) {
     int n = http.writeToStream(&scan);
     if (n < 0) return "DeepSID: " + HTTPClient::errorToString(n);
     return "";
 }
 
-// GET przez HTTPS. body() czyta odpowiedz 200 i zwraca blad albo "".
-// net = true, gdy blad dotyczy polaczenia (a nie np. braku pliku).
+/**
+ * @brief Performs a GET over HTTPS (without certificate verification).
+ * @param url  Full URL.
+ * @param net  Set to true when the error concerns the connection (and not e.g. a missing file).
+ * @param body Called for a 200 response to read the body; returns an error or "".
+ * @return "" on success, otherwise an error description.
+ */
 String fetch(const String& url, bool& net, const std::function<String(HTTPClient&)>& body) {
     net = false;
     WiFiClientSecure client;
@@ -191,7 +267,7 @@ bool DeepSidSource::list(const String& dir, std::vector<SourceEntry>& out, size_
     return found;
 }
 
-// ?folder=X zwraca X i wszystkie foldery pod nim; zostawiamy tylko bezposrednie podfoldery.
+// ?folder=X returns X and all folders below it; only the direct subfolders are kept.
 bool DeepSidSource::listFolders(const String& dir, std::vector<SourceEntry>& out, size_t maxEntries) {
     String prefix = String(HVSC_ROOT) + dir + "/";
     bool found = false;
@@ -208,7 +284,7 @@ bool DeepSidSource::listFolders(const String& dir, std::vector<SourceEntry>& out
     return found;
 }
 
-// ?file=X/ zwraca pliki w folderze X razem z danymi z bazy DeepSID.
+// ?file=X/ returns the files in folder X together with data from the DeepSID database.
 bool DeepSidSource::listFiles(const String& dir, std::vector<SourceEntry>& out, size_t maxEntries) {
     String prefix = String(HVSC_ROOT) + dir + "/";
     bool found = false, current = false;

@@ -1,24 +1,33 @@
+/**
+ * @file sidplayer.cpp
+ * @brief Implementation of SidPlayer: .sid loading, C64 memory map and play timing.
+ */
 #include "sidplayer.h"
 #include <stdlib.h>
 #include <string.h>
 #include <initializer_list>
 
-static const double PAL_CLOCK = 985248.0;
-static const double NTSC_CLOCK = 1022727.0;
-static const uint32_t PAL_FRAME = 19656;     // 312 linii * 63 cykle
-static const uint32_t NTSC_FRAME = 17095;    // 263 linie * 65 cykli
-static const uint16_t PAL_CIA_DEFAULT = 0x4025;
-static const uint16_t NTSC_CIA_DEFAULT = 0x4295;
+static const double PAL_CLOCK = 985248.0;      ///< PAL C64 clock in Hz.
+static const double NTSC_CLOCK = 1022727.0;    ///< NTSC C64 clock in Hz.
+static const uint32_t PAL_FRAME = 19656;     ///< PAL frame length in cycles: 312 lines * 63 cycles.
+static const uint32_t NTSC_FRAME = 17095;    ///< NTSC frame length in cycles: 263 lines * 65 cycles.
+static const uint16_t PAL_CIA_DEFAULT = 0x4025;    ///< Default CIA timer A latch on PAL (KERNAL value, ~60 Hz).
+static const uint16_t NTSC_CIA_DEFAULT = 0x4295;   ///< Default CIA timer A latch on NTSC (KERNAL value, ~60 Hz).
 
-// Adres-pulapka: powrot z procedury (RTS/RTI) ustawia tu PC i konczy wywolanie.
+/// Trap address: returning from a routine (RTS/RTI) sets PC here and ends the call.
 static const uint16_t TRAP_ADDR = 0x0000;
 
+/**
+ * @brief Reads a big-endian 16-bit value (as stored in the .sid header).
+ * @param p Pointer to the two bytes.
+ * @return The value.
+ */
 static inline uint16_t be16(const uint8_t* p) { return uint16_t((p[0] << 8) | p[1]); }
 
 SidPlayer::SidPlayer()
     : image(nullptr), err(""), cpu(this), modelOverride(-1), sampleRate(44100),
       clockHz(PAL_CLOCK), frameCycles(PAL_FRAME), cycleAcc(0), cyclesPerSample(1),
-      cpuCycles(0), samplesPlayed(0), song(0), useCia(false), ciaLatch(PAL_CIA_DEFAULT) {
+      cpuCycles(0), samplesPlayed(0), frameStartCycle(0), frameCpuBase(0), song(0), useCia(false), ciaLatch(PAL_CIA_DEFAULT) {
     mem = (uint8_t*)calloc(1, 0x10000);
     kernal = (uint8_t*)calloc(1, 0x2000);
     memset(io, 0, sizeof(io));
@@ -149,6 +158,8 @@ bool SidPlayer::startSong(int n) {
     cpuCycles = 0;
     samplesPlayed = 0;
     cycleAcc = 0;
+    frameStartCycle = 0;
+    frameCpuBase = 0;
     // init moze nie wracac (RSID z petla glowna) - wtedy przerywamy po limicie cykli
     callRoutine(hdr.initAddr, uint8_t(n - 1), 4000000);
 
@@ -218,10 +229,15 @@ void SidPlayer::playFrame() {
 void SidPlayer::render(int16_t* out, size_t n, float gain) {
     if (!image || !song) { memset(out, 0, n * sizeof(int16_t)); return; }
     const float k = gain * 32767.0f;
+#if SID_ENGINE == SID_ENGINE_REAL
+    sid.setMuted(gain <= 0.0f);
+#endif
     for (size_t i = 0; i < n; i++) {
         cycleAcc += cyclesPerSample;
         if (cycleAcc >= frameCycles) {
             cycleAcc -= frameCycles;
+            frameStartCycle = double(samplesPlayed + i) * cyclesPerSample;
+            frameCpuBase = cpuCycles;
             playFrame();
         }
         float s = sid.clock() * k;
@@ -281,7 +297,15 @@ uint8_t SidPlayer::ioRead(uint16_t addr) {
 
 void SidPlayer::ioWrite(uint16_t addr, uint8_t v) {
     uint16_t off = addr - 0xD000;
-    if (addr >= 0xD400 && addr < 0xD800) { sid.write(addr & 0x1F, v); return; }
+    if (addr >= 0xD400 && addr < 0xD800) {
+#if SID_ENGINE == SID_ENGINE_REAL
+        // prawdziwy uklad: zapis z czasem = poczatek ramki + cykle CPU od jej poczatku
+        double d = double(cpuCycles - frameCpuBase);
+        sid.setTime(frameStartCycle + (d < frameCycles ? d : frameCycles));
+#endif
+        sid.write(addr & 0x1F, v);
+        return;
+    }
     io[off] = v;
     switch (addr) {
     case 0xDC04: ciaLatch = (ciaLatch & 0xFF00) | v; break;

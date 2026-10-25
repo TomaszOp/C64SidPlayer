@@ -1,5 +1,8 @@
-// WebSettings - ustawienia panelu WWW zapamietywane w NVS, niezalezne od
-// ustawien odtwarzacza. Lista ustawien: WebSettings.def.
+/**
+ * @file WebSettings.h
+ * @brief WebSettings - web panel settings stored in NVS, independent of the
+ *        player settings. List of settings: WebSettings.def.
+ */
 #pragma once
 #include <NvsSettings.h>
 

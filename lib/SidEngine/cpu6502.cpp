@@ -1,6 +1,10 @@
+/**
+ * @file cpu6502.cpp
+ * @brief Implementation of the MOS 6502/6510 CPU emulator.
+ */
 #include "cpu6502.h"
 
-// Bazowa liczba cykli dla kazdego kodu rozkazu (bez kar za przekroczenie strony).
+/// Base cycle count for every opcode (without page-crossing penalties); 0 = KIL/JAM.
 static const uint8_t CYCLES[256] = {
     7,6,0,8,3,3,5,5,3,2,2,2,4,4,6,6, 2,5,0,8,4,4,6,6,2,4,2,7,4,4,7,7,
     6,6,0,8,3,3,5,5,4,2,2,2,4,4,6,6, 2,5,0,8,4,4,6,6,2,4,2,7,4,4,7,7,

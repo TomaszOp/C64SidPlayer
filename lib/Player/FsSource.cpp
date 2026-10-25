@@ -1,3 +1,7 @@
+/**
+ * @file FsSource.cpp
+ * @brief Implementation of FsSource, FlashSource (LittleFS) and SdSource (SD card over SPI).
+ */
 #include "FsSource.h"
 #include "Player.h"
 #include <LittleFS.h>
@@ -55,7 +59,7 @@ uint64_t FlashSource::freeSpace() { return mounted_ ? LittleFS.totalBytes() - Li
 // ---------------------------------------------------------------- karta SD
 
 #if PLAYER_SOURCE_SD
-static const uint32_t SD_RETRY_MS = 3000;
+static const uint32_t SD_RETRY_MS = 3000;   ///< Interval between SD card mount retries in ms.
 
 SdSource::SdSource() : FsSource(SD) {}
 

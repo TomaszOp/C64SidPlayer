@@ -1,12 +1,17 @@
-// PlayerMemory - ustawienia odtwarzacza zapamietywane w NVS (mechanizm NvsSettings).
-// Lista ustawien jest w PlayerSettings.def. Uzycie:
-//
-//   PlayerMemory mem;
-//   mem.load();                 // w setup(): odczyt, brak zapisu = wartosci domyslne
-//   mem.apply(player);          // glosnosc, model SID, zrodlo i foldery -> odtwarzacz
-//   mem.capture(player);        // biezacy stan odtwarzacza -> ustawienia
-//   mem.save();                 // zapisuje tylko to, co sie zmienilo
-//   mem.setDefault(true);       // wartosci domyslne i wyczyszczenie NVS
+/**
+ * @file PlayerMemory.h
+ * @brief PlayerMemory - player settings stored in NVS (NvsSettings mechanism).
+ *
+ * The list of settings is in PlayerSettings.def. Usage:
+ * @code
+ *   PlayerMemory mem;
+ *   mem.load();                 // in setup(): read, nothing stored = default values
+ *   mem.apply(player);          // volume, SID model, source and folders -> player
+ *   mem.capture(player);        // current player state -> settings
+ *   mem.save();                 // writes only what has changed
+ *   mem.setDefault(true);       // default values and clearing NVS
+ * @endcode
+ */
 #pragma once
 #include <NvsSettings.h>
 #include <SidSource.h>
@@ -19,15 +24,42 @@
 
 class Player;
 
+/**
+ * @brief Player settings (PlayerSettings.def) plus transferring them to / from a Player.
+ */
 class PlayerMemory : public PlayerSettings {
 public:
-    // Pola zapamietane dla jednego zrodla (nullptr = brak pol dla tego zrodla).
+    /** @brief Fields remembered for one source (nullptr = no fields for this source). */
     struct SourceMemory { String* dir; String* file; uint8_t* song; };
+    /**
+     * @brief Returns pointers to the folder / file / subtune fields of a source.
+     * @param type Source.
+     * @return Field pointers (all nullptr for an unknown source).
+     */
     SourceMemory forSource(SourceType type);
 
+    /**
+     * @brief Applies the settings to the player: volume, mute, SID model, folders and the active source.
+     *
+     * A source that is not compiled in falls back to flash memory.
+     * @param player Player.
+     */
     void apply(Player& player);
+    /**
+     * @brief Copies the current player state into the settings (does not save).
+     * @param player Player.
+     */
     void capture(Player& player);
-    // Ostatni plik i podutwor aktywnego zrodla - do grania po wlaczeniu zasilania.
+    /**
+     * @brief Last file of the active source - to play after power-on.
+     * @param player Player (for the active source).
+     * @return Full path, "" when none.
+     */
     String lastFile(Player& player);
+    /**
+     * @brief Last subtune of the active source.
+     * @param player Player (for the active source).
+     * @return Subtune number, 0 = default.
+     */
     uint8_t lastSong(Player& player);
 };

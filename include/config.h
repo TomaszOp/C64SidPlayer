@@ -61,4 +61,21 @@
 #endif
 #define SD_SPI_FREQ    20000000          // obniz do 4000000, jesli karta nie dziala na dlugich kablach
 
+// --- Prawdziwy uklad SID (silnik -DSID_ENGINE=2 w platformio.ini) ---
+// Schemat podlaczenia: docs/REAL_SID.md
+// Model ukladu w podstawce: 0 = MOS 6581 (VDD 12 V, kondensatory 470 pF),
+//                           1 = MOS 8580 (VDD 9 V, kondensatory 22 nF)
+#define REAL_SID_MODEL      1
+// Piny (puste = domyslne z lib/SidEngine/real_sid_chip.h):
+//   ESP32-S3: DATA 15, SHIFT 16, LATCH 17, CS 18, PHI2 7, RES 8
+//   ESP32:    DATA 13, SHIFT 14, LATCH 27, CS 21, PHI2 32, RES 33
+// #define REAL_SID_PIN_DATA   15   // 74HCT595 DS (pierwszy rejestr: D0-D7)
+// #define REAL_SID_PIN_SHIFT  16   // 74HCT595 SHCP (oba rejestry)
+// #define REAL_SID_PIN_LATCH  17   // 74HCT595 STCP (oba rejestry)
+// #define REAL_SID_PIN_CS     18   // SID /CS
+// #define REAL_SID_PIN_PHI2   7    // SID PHI2 (zegar ~1 MHz)
+// #define REAL_SID_PIN_RES    8    // SID /RES
+// 1 = emulacja reSID gra rownolegle przez DAC I2S (porownanie), 0 = cisza na I2S
+#define REAL_SID_EMU_AUDIO  0
+
 #define DEFAULT_VOLUME 56                // 0..100 (80 sciszone o 30%)

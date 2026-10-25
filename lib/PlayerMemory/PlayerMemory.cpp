@@ -1,3 +1,7 @@
+/**
+ * @file PlayerMemory.cpp
+ * @brief Implementation of PlayerMemory (settings <-> Player).
+ */
 #include "PlayerMemory.h"
 #include "Player.h"
 

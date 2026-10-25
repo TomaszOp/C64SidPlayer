@@ -31,3 +31,6 @@ sid2wav.exe
 # Python
 __pycache__/
 *.pyc
+
+
+CLAUDE.md

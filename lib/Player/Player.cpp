@@ -1,3 +1,7 @@
+/**
+ * @file Player.cpp
+ * @brief Implementation of Player: I2S audio task, sources and folders, file list and playback control.
+ */
 #include "Player.h"
 #include <algorithm>
 #include <driver/i2s.h>
@@ -7,7 +11,7 @@
 #error "Ten uklad nie ma wbudowanego DAC - usun SID_OUTPUT_INTERNAL_DAC i uzyj DAC I2S"
 #endif
 
-static const int AUDIO_CHUNK = 256;
+static const int AUDIO_CHUNK = 256;   ///< Samples per audio block (also the I2S DMA buffer length).
 
 Player::Player()
     : mutex_(nullptr), state_(PlayerState::Stopped), muted_(false), testTone_(false),
@@ -306,7 +310,7 @@ String Player::playIndex(int index, int song) {
     return loadAndStart(SourcePath::join(dir(), name), song);
 }
 
-// nastepny / poprzedni plik w biezacym folderze (foldery sa pomijane)
+// next / previous file in the current folder (folders are skipped)
 String Player::stepFile(int delta) {
     int n = fileCount();
     if (!n) return "brak plikow w folderze " + dir();

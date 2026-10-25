@@ -1,17 +1,26 @@
+/**
+ * @file sid.cpp
+ * @brief Implementation of the own SID chip emulation (class Sid).
+ */
 #include "sid.h"
 #include <math.h>
 #include <string.h>
 
-// Liczba podprobek oscylatora na jedna probke wyjsciowa (redukuje aliasing).
 #ifndef SID_OVERSAMPLE
+/// Number of oscillator subsamples per output sample (reduces aliasing).
 #define SID_OVERSAMPLE 4
 #endif
 
-// Okresy licznika obwiedni w cyklach zegara (z dokumentacji / reSID).
+/// Envelope rate counter periods in clock cycles, indexed by the 4-bit A/D/R value (from the documentation / reSID).
 static const uint16_t RATE_PERIOD[16] = {
     9, 32, 63, 95, 149, 220, 267, 313, 392, 977, 1954, 3126, 3907, 11720, 19532, 31251
 };
 
+/**
+ * @brief Exponential decay/release divider for the current envelope level (approximates the SID's curve).
+ * @param env Envelope level 0..255.
+ * @return Number of rate-counter periods per envelope step (1, 2, 4, 8, 16 or 30).
+ */
 static inline uint8_t expPeriod(uint8_t env) {
     if (env >= 0x5D) return 1;
     if (env >= 0x36) return 2;

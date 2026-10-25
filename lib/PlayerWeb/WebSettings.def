@@ -1,8 +1,8 @@
-// Ustawienia panelu WWW - jedna linia na ustawienie (zasady: lib/NvsSettings/NvsSettings.h).
+// Web panel settings - one line per setting (rules: lib/NvsSettings/NvsSettings.h).
 //
-//   SETTING(typ, nazwa, "klucz NVS", wartosc domyslna)
+//   SETTING(type, name, "NVS key", default value)
 //
-// Gdy zmienisz typ albo znaczenie istniejacego ustawienia, zwieksz NVS_VERSION w WebSettings.h.
+// When you change the type or meaning of an existing setting, increase NVS_VERSION in WebSettings.h.
 
-//      typ      nazwa  klucz   domyslnie
-SETTING(uint8_t, skin,  "skin", 0)    // wyglad strony (enum WebSkin, 0 = Nowoczesny)
+//      type     name   key     default
+SETTING(uint8_t, skin,  "skin", 0)    // page look (enum WebSkin, 0 = Modern)

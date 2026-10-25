@@ -1,3 +1,7 @@
+/**
+ * @file PlayerConsole.cpp
+ * @brief Implementation of PlayerConsole: command parsing and printing of lists and status.
+ */
 #include "PlayerConsole.h"
 #include <WiFi.h>
 #include "PlayerMemory.h"
@@ -35,7 +39,7 @@ void PlayerConsole::report(const String& error, bool showStatus) {
     else if (showStatus) printStatus();
 }
 
-// "3" -> nazwa 3. pliku, inaczej nazwa podana wprost
+// "3" -> name of the 3rd file, otherwise the name as given
 String PlayerConsole::fileArg(const String& arg) {
     int n = arg.toInt();
     return n > 0 ? player_.fileName(n) : arg;
