@@ -1,0 +1,12 @@
+// LCD settings - one line per setting (rules: lib/NvsSettings/NvsSettings.h).
+//
+//   SETTING(type, name, "NVS key", default value)
+//
+// When you change the type or meaning of an existing setting, increase NVS_VERSION in LcdSettings.h.
+
+//      type      name        key       default
+SETTING(uint8_t,  brightness, "bright", 100)   // backlight 5..100 %
+SETTING(uint8_t,  dimLevel,   "dimlvl", 15)    // backlight after dimSec of inactivity, %
+SETTING(uint16_t, dimSec,     "dimsec", 120)   // dim after this many seconds without input, 0 = never
+SETTING(uint16_t, offSec,     "offsec", 0)     // backlight off after this many seconds, 0 = never
+SETTING(uint8_t,  theme,      "theme",  0)     // enum LcdThemeId: 0 = Modern, 1 = Commodore 64

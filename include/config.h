@@ -81,4 +81,35 @@
 // 1 = the reSID emulation plays in parallel through the I2S DAC (comparison), 0 = silence on I2S
 #define REAL_SID_EMU_AUDIO  0
 
+// --- LCD ILI9341 + encoder + buttons (-DUSE_LCD=1, environment esp32s3-n16r8-lcd) ---
+// Description and wiring: docs/LCD.md. The display pins (TFT_SCLK, TFT_MOSI, TFT_CS, TFT_DC,
+// TFT_RST) are TFT_eSPI build flags in platformio.ini; the remaining pins are here.
+#ifndef USE_LCD
+#define USE_LCD 0
+#endif
+#ifndef LCD_BUTTONS
+#define LCD_BUTTONS    1     ///< 1 = encoder + buttons Back / Select, 0 = encoder only (short push = Select, long = Back).
+#endif
+#define LCD_PIN_BL     2     ///< Backlight PWM (through a transistor), -1 = backlight wired to 3V3.
+#define LCD_PIN_ENC_A  40    ///< Encoder A (CLK).
+#define LCD_PIN_ENC_B  41    ///< Encoder B (DT).
+#define LCD_PIN_PUSH   42    ///< Encoder push button (to GND).
+#define LCD_PIN_BACK   1     ///< Button 1 "Back" (to GND), used when LCD_BUTTONS = 1.
+#define LCD_PIN_SELECT 39    ///< Button 2 "Select" (to GND), used when LCD_BUTTONS = 1.
+#define LCD_ROTATION   1     ///< 1 or 3 = landscape (3 = rotated by 180 degrees).
+#define LCD_ENC_COUNTS 4     ///< Encoder counts per click: 4 for most encoders, 2 if one click moves by two.
+#define LCD_ENC_REVERSE 0    ///< 1 = swap the turning direction.
+
+#if USE_LCD
+#if !CONFIG_IDF_TARGET_ESP32S3
+#error "LCD (USE_LCD=1) jest przewidziany tylko dla ESP32-S3 (srodowisko esp32s3-n16r8-lcd)"
+#endif
+#if defined(TFT_CS) && (TFT_CS == SD_PIN_CS || TFT_SCLK == SD_PIN_SCK || TFT_MOSI == SD_PIN_MOSI)
+#error "Piny LCD (TFT_*) koliduja z karta SD - LCD ma osobna magistrale SPI"
+#endif
+#if defined(TFT_CS) && (TFT_CS == I2S_PIN_BCK || TFT_CS == I2S_PIN_WS || TFT_DC == I2S_PIN_DATA)
+#error "Piny LCD (TFT_*) koliduja z I2S"
+#endif
+#endif
+
 #define DEFAULT_VOLUME 56                ///< Default volume 0..100 (80 lowered by 30%).

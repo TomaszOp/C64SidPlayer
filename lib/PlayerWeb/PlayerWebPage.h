@@ -61,7 +61,8 @@ li.on .n div{color:var(--ok);font-weight:700}
 li button{min-height:44px;min-width:48px;padding:0 12px}
 li .del{background:transparent;border:1px solid var(--accent)}
 #free{font-size:12px;color:var(--hi);margin-top:8px;text-align:right}
-#path{font:14px ui-monospace,Menlo,Consolas,monospace;color:var(--hi);margin-bottom:8px;word-break:break-all}
+#path{font:14px ui-monospace,Menlo,Consolas,monospace;color:var(--hi);word-break:break-all;flex:1;min-width:0}
+#md{background:transparent;border:1px solid var(--accent)}
 #upto{font-size:14px;color:var(--hi);margin-bottom:8px;word-break:break-word}
 li.dir .n div,li.up .n div{font-weight:700}
 li.dir .n div::before,li.up .n div::before{content:"\1F4C1  "}
@@ -108,7 +109,7 @@ li.dir button{background:transparent;border:1px solid var(--accent)}
  <section class="card full">
   <h2><span data-i="files">Pliki</span> <span id="count"></span></h2>
   <div class="row" id="srcRow" style="margin-bottom:8px"><span data-i="source">Źródło</span><select id="src"></select></div>
-  <div id="path"></div>
+  <div class="row" style="margin-bottom:8px"><div id="path"></div><button id="md" data-it="md" title="Nowy folder" style="display:none">&#128193;+</button></div>
   <input id="search" type="search" placeholder="Szukaj w folderze…" data-ip="search" autocomplete="off">
   <ul id="list"></ul>
   <button id="more" style="width:100%;margin-top:8px;display:none">Pokaż więcej</button>
@@ -127,7 +128,7 @@ pl:{now:'Teraz gra',file:'plik',tune:'utwór',stop:'stop',mute:'wycisz',fprev:'P
  noConn:'Brak połączenia z ESP32',pick:'Wybierz plik z listy albo wgraj nowy.',song:(a,b,t)=>`Utwór ${a} / ${b} · ${t}`,free:'Wolne miejsce: ',
  up:'poziom wyżej',folder:'folder',open:'Otwórz',play:'Graj',del:'Usuń',srcNA:'Źródło niedostępne',empty:'Pusty folder',emptyUp:' – wgraj pierwszy plik .sid',
  more:(a,b)=>`Pokaż więcej (${a} z ${b})`,upTo:'Pliki trafią do: ',upOff:'Wgrywanie do tego źródła jest wyłączone.',na:' (niedostępne)',
- delQ:f=>'Usunąć '+f+'?',first:'Najpierw wgraj plik .sid',err:n=>'błąd '+n,lost:'brak połączenia',onlySid:'Wybierz pliki z rozszerzeniem .sid',
+ delQ:f=>'Usunąć '+f+'?',md:'Nowy folder',mdQ:'Nazwa nowego folderu:',first:'Najpierw wgraj plik .sid',err:n=>'błąd '+n,lost:'brak połączenia',onlySid:'Wybierz pliki z rozszerzeniem .sid',
  sending:(i,n,f)=>`Wysyłam ${i}/${n}: ${f}`,done:n=>`Wgrano ${n} plik(ów) – gra ostatni.`,skipped:n=>`Pominięto ${n} (nie .sid). `},
 en:{now:'Now playing',file:'file',tune:'tune',stop:'stop',mute:'mute',fprev:'Previous file',prev:'Previous subtune',pp:'Play / pause',
  next:'Next subtune',fnext:'Next file',chip:'SID chip',auto:'automatic',m6581:'6581 (old)',m8580:'8580 (new)',look:'Look',lang:'Language',
@@ -135,7 +136,7 @@ en:{now:'Now playing',file:'file',tune:'tune',stop:'stop',mute:'mute',fprev:'Pre
  noConn:'No connection to the ESP32',pick:'Choose a file from the list or upload a new one.',song:(a,b,t)=>`Tune ${a} / ${b} · ${t}`,free:'Free space: ',
  up:'up one level',folder:'folder',open:'Open',play:'Play',del:'Delete',srcNA:'Source unavailable',empty:'Empty folder',emptyUp:' – upload the first .sid file',
  more:(a,b)=>`Show more (${a} of ${b})`,upTo:'Files will go to: ',upOff:'Uploading to this source is disabled.',na:' (unavailable)',
- delQ:f=>'Delete '+f+'?',first:'Upload a .sid file first',err:n=>'error '+n,lost:'no connection',onlySid:'Choose files with the .sid extension',
+ delQ:f=>'Delete '+f+'?',md:'New folder',mdQ:'Name of the new folder:',first:'Upload a .sid file first',err:n=>'error '+n,lost:'no connection',onlySid:'Choose files with the .sid extension',
  sending:(i,n,f)=>`Sending ${i}/${n}: ${f}`,done:n=>`Uploaded ${n} file(s) – playing the last one.`,skipped:n=>`Skipped ${n} (not .sid). `,
  skin_modern:'Modern',src_flash:'Flash memory',src_sd:'SD card'}};
 // the server sends the saved language in a cookie with the page, so it is right before the first draw
@@ -197,7 +198,7 @@ function render(){
  $('path').textContent=srcName(li.source)+': '+(li.dir||'/');
  let h=li.dir&&li.dir!=='/'?'<li class="up"><div class="n" data-act="up"><div>..</div><small>'+T('up')+'</small></div></li>':'';
  h+=l.map(f=>f.dir?`<li class="dir" data-d="${esc(f.name)}"><div class="n" data-act="cd"><div>${esc(f.name)}</div><small>${T('folder')}</small></div>
-  <button data-act="cd" title="${T('open')}">&#10095;</button></li>`
+  <button data-act="cd" title="${T('open')}">&#10095;</button>${li.del?`<button class="del" data-act="rd" title="${T('del')}">&#128465;</button>`:''}</li>`
   :`<li data-f="${esc(full(f.name))}" class="${st.fileSource===st.source&&full(f.name)===st.file?'on':''}">
   <div class="n" data-act="play"><div>${esc(f.name.replace(/\.sid$/i,'').replace(/_/g,' '))}</div><small>${kb(f.size)}</small></div>
   <button data-act="play" title="${T('play')}">&#9654;</button>${li.del?`<button class="del" data-act="del" title="${T('del')}">&#128465;</button>`:''}</li>`).join('');
@@ -207,6 +208,7 @@ function render(){
  $('more').style.display=files.length<li.total?'block':'none';
  $('more').textContent=T('more',files.length,li.total);
  $('drop').style.display=li.upload?'block':'none';
+ $('md').style.display=li.upload?'':'none';
  $('upto').innerHTML=li.upload?esc(T('upTo'))+'<b>'+esc(srcName(li.source)+': '+li.dir)+'</b>':esc(T('upOff'));
 }
 async function loadSources(){
@@ -216,10 +218,12 @@ async function loadSources(){
 }
 $('src').onchange=e=>api('source?s='+encodeURIComponent(e.target.value)).then(loadSources);
 $('more').onclick=()=>loadList(true);
+$('md').onclick=()=>{const n=prompt(T('mdQ'));if(n&&n.trim())api('mkdir?name='+encodeURIComponent(n.trim())).then(()=>loadList())};
 $('list').onclick=e=>{
  const a=e.target.closest('[data-act]');if(!a)return;const r=a.closest('li'),act=a.dataset.act;
  if(act==='up')return api('cd?dir=..');
  if(act==='cd')return api('cd?dir='+encodeURIComponent(r.dataset.d));
+ if(act==='rd')return api('rmdir?dir='+encodeURIComponent(r.dataset.d)).then(()=>loadList());
  const f=r.dataset.f;if(!f)return;
  if(act==='play')api('play?file='+encodeURIComponent(f));
  else if(confirm(T('delQ',f)))api('delete?file='+encodeURIComponent(f)).then(()=>loadList());

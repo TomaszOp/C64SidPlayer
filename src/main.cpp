@@ -8,6 +8,7 @@
  *   lib/PlayerMemory   settings remembered in NVS (volume, SID model, last file...)
  *   lib/PlayerWeb      example: web panel (phone / PC)
  *   lib/PlayerConsole  example: commands over the serial port (COM)
+ *   lib/PlayerLcd      optional: ILI9341 LCD + encoder + buttons (-DUSE_LCD=1, docs/LCD.md)
  * @endcode
  * The web panel or the console can be disabled below - the player works without them.
  */
@@ -20,6 +21,9 @@
 #include <PlayerWeb.h>
 #include <PlayerConsole.h>
 #include <DualSerial.h>
+#if USE_LCD
+#include <PlayerLcd.h>
+#endif
 
 #define USE_WEB      1     ///< 1 = start WiFi and the web panel.
 #define USE_CONSOLE  1     ///< 1 = serial console commands.
@@ -33,6 +37,24 @@ static PlayerWeb web(player);  ///< Web panel.
 #endif
 #if USE_CONSOLE
 static PlayerConsole console(player, Console);   ///< Serial command console.
+#endif
+#if USE_LCD
+static PlayerLcd lcd(player);  ///< LCD with the encoder and buttons.
+
+/** @brief Starts the LCD with the pins from config.h. */
+static void startLcd() {
+    LcdConfig c;
+    c.pinBacklight = LCD_PIN_BL;
+    c.rotation = LCD_ROTATION;
+    c.input.pinA = LCD_PIN_ENC_A;
+    c.input.pinB = LCD_PIN_ENC_B;
+    c.input.pinPush = LCD_PIN_PUSH;
+    c.input.pinBack = LCD_BUTTONS ? LCD_PIN_BACK : -1;
+    c.input.pinSelect = LCD_BUTTONS ? LCD_PIN_SELECT : -1;
+    c.input.countsPerDetent = LCD_ENC_COUNTS;
+    c.input.reverse = LCD_ENC_REVERSE;
+    lcd.begin(c);
+}
 #endif
 
 /**
@@ -107,6 +129,9 @@ void setup() {
     }
     // read the current folder now, so that the first page load does not wait for it (DeepSid: seconds)
     if (player.sourceReady()) player.files();
+#if USE_LCD
+    startLcd();
+#endif
 #if USE_CONSOLE
     console.setMemory(&memory);
     console.start();
@@ -115,7 +140,7 @@ void setup() {
 }
 
 /**
- * @brief Arduino loop: serves the web panel and the console and saves changed settings every SAVE_EVERY_MS.
+ * @brief Arduino loop: serves the web panel, the console and the LCD and saves changed settings every SAVE_EVERY_MS.
  */
 void loop() {
 #if USE_WEB
@@ -123,6 +148,9 @@ void loop() {
 #endif
 #if USE_CONSOLE
     console.handle();
+#endif
+#if USE_LCD
+    lcd.handle();
 #endif
     // zmiany z WWW i konsoli zapisuj co kilka sekund, i tylko gdy cos sie zmienilo
     static uint32_t lastSave = 0;

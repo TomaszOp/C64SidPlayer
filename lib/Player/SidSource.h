@@ -3,7 +3,7 @@
  * @brief Sources of .sid files: flash memory (LittleFS), SD card, DeepSID portal (internet).
  *
  * Every source is a class derived from SidSource. The source descriptions (short name, description,
- * whether uploading files is allowed) are in the PLAYER_SOURCES table in PlayerSources.cpp.
+ * whether writing is allowed) are in the PLAYER_SOURCES table in PlayerSources.cpp.
  *
  * Adding a new source:
  *   1. add a value to enum SourceType (before Count) - even if it is enabled by
@@ -36,7 +36,7 @@ struct SourceInfo {
     SourceType type;        ///< Source type.
     const char* id;         ///< Short name used in the API / console, e.g. "sd".
     const char* name;       ///< Description shown on the web page.
-    bool upload;            ///< Whether uploading files (to the current folder) is allowed.
+    bool upload;            ///< Whether writing is allowed: uploading/deleting files, creating/deleting folders.
 };
 
 /** @brief One entry of a folder listing. */
@@ -109,6 +109,18 @@ public:
      * @return true if deleted.
      */
     virtual bool remove(const String& path) { return false; }
+    /**
+     * @brief Creates a folder.
+     * @param path Folder path.
+     * @return true if created.
+     */
+    virtual bool makeDir(const String& path) { return false; }
+    /**
+     * @brief Deletes a folder together with everything inside it.
+     * @param path Folder path.
+     * @return true if deleted.
+     */
+    virtual bool removeDir(const String& path) { return false; }
     /** @brief Maximum full path length. @return Number of characters. */
     virtual size_t maxPathLength() const { return 255; }
 

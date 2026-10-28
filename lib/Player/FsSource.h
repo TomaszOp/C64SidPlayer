@@ -55,6 +55,18 @@ public:
      * @return true if deleted.
      */
     bool remove(const String& path) override { return fs_.remove(path); }
+    /**
+     * @brief Creates a folder.
+     * @param path Folder path.
+     * @return true if created.
+     */
+    bool makeDir(const String& path) override { return fs_.mkdir(path); }
+    /**
+     * @brief Deletes a folder recursively (all files, including non-.sid and hidden ones).
+     * @param path Folder path.
+     * @return true if the folder and its whole content were deleted.
+     */
+    bool removeDir(const String& path) override;
 
 protected:
     fs::FS& fs_;   ///< Underlying file system.

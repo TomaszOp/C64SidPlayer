@@ -115,6 +115,12 @@ void PlayerConsole::execute(const String& line) {
     } else if (cmd == "del" || cmd == "rm") {
         String name = fileArg(arg);
         io_.println(player_.removeFile(name) ? "usunieto " + name : "nie usunieto " + name);
+    } else if (cmd == "mkdir" || cmd == "md") {
+        String e = player_.makeDir(arg);
+        if (e.length()) report(e); else io_.println("utworzono folder " + Player::sanitizeDirName(arg));
+    } else if (cmd == "rmdir" || cmd == "rd") {
+        String e = player_.removeDir(arg);
+        if (e.length()) report(e); else io_.println("usunieto folder " + arg);
     } else if (cmd == "tone") {
         player_.setTestTone(!player_.testTone());
         io_.println(player_.testTone() ? "ton testowy 440 Hz WLACZONY (wpisz tone, aby wylaczyc)"
@@ -197,6 +203,8 @@ void PlayerConsole::printHelp() {
         "  vol <0-100> | + | -      glosnosc       m | mute  wycisz / wlacz\n"
         "  model <auto|6581|8580>   model ukladu SID\n"
         "  del <nr|nazwa>           usun plik\n"
+        "  md | mkdir <nazwa>       utworz folder w biezacym\n"
+        "  rd | rmdir <nazwa>       usun folder z cala zawartoscia\n"
         "  info | ip | tone | ?");
     if (memory_)
         io_.println(

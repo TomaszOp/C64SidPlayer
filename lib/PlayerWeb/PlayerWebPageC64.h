@@ -59,6 +59,7 @@ li.on .n{background:var(--txt);color:var(--scr)}
 li button{min-width:6ch}
 li .del{background:transparent;color:var(--txt);border:2px solid var(--txt)}
 li .t{min-width:4ch}
+#md{min-height:32px;padding:0 6px;margin-left:8px}
 #msg{min-height:1.3em;margin-top:10px}
 .err{color:var(--err)}
 .cur{display:inline-block;width:.8em;height:1.05em;background:var(--txt);vertical-align:text-bottom;animation:bl 1s steps(1) infinite}
@@ -102,7 +103,7 @@ li .t{min-width:4ch}
  <p id="loaddir">LOAD"$",8</p>
  <div class="ln" id="srcRow"><span>DRIVE</span><select id="src"></select></div>
  <div class="ln"><span>FIND</span><input id="search" type="search" placeholder="NAZWA..." data-ip="search" autocomplete="off"></div>
- <p style="margin-top:8px" class="wrap">0 <span id="hdr" style="background:var(--txt);color:var(--scr)"></span></p>
+ <p style="margin-top:8px" class="wrap">0 <span id="hdr" style="background:var(--txt);color:var(--scr)"></span><button id="md" data-it="md" title="Nowy folder" style="display:none">MD</button></p>
  <ul id="list"></ul>
  <button id="more" style="width:100%;margin-top:6px;display:none">MORE</button>
  <p id="blocks"></p>
@@ -118,11 +119,11 @@ const L={
 pl:{fprev:'Poprzedni plik',prev:'Poprzedni podutwor',pp:'Graj / pauza',next:'Nastepny podutwor',fnext:'Nastepny plik',mute:'Wycisz',
  look:'WYGLAD',lang:'JEZYK',drop:'DOTKNIJ ALBO UPUSC TU PLIKI .SID',search:'NAZWA...',pick:'WYBIERZ PLIK Z LISTY ALBO WGRAJ NOWY',
  open:'Otworz',play:'Graj',del:'Usun',empty:'PUSTY FOLDER',wp:'?WRITE PROTECT ERROR (WGRYWANIE WYLACZONE)',na:' (BRAK)',err:n=>'BLAD '+n,
- saved:(n,k)=>`ZAPISANO ${n}${k?', POMINIETO '+k:''}`},
+ saved:(n,k)=>`ZAPISANO ${n}${k?', POMINIETO '+k:''}`,md:'Nowy folder',mdQ:'MD: NAZWA FOLDERU'},
 en:{fprev:'Previous file',prev:'Previous subtune',pp:'Play / pause',next:'Next subtune',fnext:'Next file',mute:'Mute',
  look:'LOOK',lang:'LANGUAGE',drop:'TAP OR DROP .SID FILES HERE',search:'NAME...',pick:'CHOOSE A FILE FROM THE LIST OR UPLOAD A NEW ONE',
  open:'Open',play:'Play',del:'Delete',empty:'EMPTY FOLDER',wp:'?WRITE PROTECT ERROR',na:' (NOT PRESENT)',err:n=>'ERROR '+n,
- saved:(n,k)=>`SAVED ${n}${k?', SKIPPED '+k:''}`,skin_modern:'Modern',src_flash:'Flash memory',src_sd:'SD card'}};
+ saved:(n,k)=>`SAVED ${n}${k?', SKIPPED '+k:''}`,md:'New folder',mdQ:'MD: FOLDER NAME',skin_modern:'Modern',src_flash:'Flash memory',src_sd:'SD card'}};
 // the server sends the saved language in a cookie with the page, so it is right before the first draw
 let lang=(document.cookie.match(/(?:^|;\s*)lang=(\w+)/)||[])[1];if(!L[lang])lang='pl';
 const T=(k,...a)=>{const v=k in L[lang]?L[lang][k]:L.pl[k];return typeof v==='function'?v(...a):v};
@@ -188,7 +189,7 @@ function render(){
  $('hdr').textContent=`"${(li.source||'')+':'+(li.dir||'/')}" ${dv} 2A`;
  let h=li.dir&&li.dir!=='/'?'<li data-act="up"><span class="b">0</span><span class="n" data-act="up">".."</span><span class="t">DIR</span></li>':'';
  h+=l.map(f=>f.dir?`<li data-d="${esc(f.name)}"><span class="b">0</span><span class="n" data-act="cd">"${esc(f.name)}"</span><span class="t">DIR</span>
-  <button data-act="cd" title="${T('open')}">CD</button></li>`
+  <button data-act="cd" title="${T('open')}">CD</button>${li.del?`<button class="del" data-act="rd" title="${T('del')}">DEL</button>`:''}</li>`
   :`<li data-f="${esc(full(f.name))}" class="${st.fileSource===st.source&&full(f.name)===st.file?'on':''}">
   <span class="b">${blk(f.size)}</span><span class="n" data-act="play">"${esc(f.name.replace(/\.sid$/i,'').replace(/_/g,' '))}"</span><span class="t">SID</span>
   <button data-act="play" title="${T('play')}">RUN</button>${li.del?`<button class="del" data-act="del" title="${T('del')}">DEL</button>`:''}</li>`).join('');
@@ -198,6 +199,7 @@ function render(){
  $('more').style.display=files.length<li.total?'block':'none';
  $('more').textContent=`MORE (${files.length}/${li.total})`;
  $('drop').style.display=li.upload?'block':'none';
+ $('md').style.display=li.upload?'':'none';
  $('save').textContent=li.upload?`SAVE"${li.dir==='/'?'':li.dir+'/'}*.SID",${dv}`:T('wp');
 }
 async function loadSources(){
@@ -207,6 +209,7 @@ async function loadSources(){
 }
 $('src').onchange=e=>api('source?s='+encodeURIComponent(e.target.value)).then(loadSources);
 $('more').onclick=()=>loadList(true);
+$('md').onclick=()=>{const n=prompt(T('mdQ'));if(n&&n.trim())api('mkdir?name='+encodeURIComponent(n.trim())).then(()=>loadList())};
 async function loadSkins(){
  try{const s=await (await fetch('/api/skins')).json();
   $('skin').innerHTML=s.skins.map(k=>`<option value="${esc(k.id)}">${esc(T('skin_'+k.id)||k.name)}</option>`).join('');$('skin').value=s.current}catch(e){}
@@ -221,6 +224,7 @@ $('list').onclick=e=>{
  const a=e.target.closest('[data-act]');if(!a)return;const r=a.closest('li'),act=a.dataset.act;
  if(act==='up')return api('cd?dir=..');
  if(act==='cd')return api('cd?dir='+encodeURIComponent(r.dataset.d));
+ if(act==='rd')return api('rmdir?dir='+encodeURIComponent(r.dataset.d)).then(()=>loadList());
  const f=r.dataset.f;if(!f)return;
  if(act==='play')api('play?file='+encodeURIComponent(f));
  else if(confirm('SCRATCH "'+f+'"?'))api('delete?file='+encodeURIComponent(f)).then(()=>loadList());

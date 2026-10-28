@@ -147,6 +147,14 @@ public:
     const std::vector<PlayerFile>& files();
     /** @brief Re-reads the folder on the next files() call. */
     void refreshFiles();
+    /**
+     * @brief Counter increased every time the folder listing is read again.
+     *
+     * Lets another interface (e.g. the LCD) notice that the web panel or the console changed
+     * the folder, the source or the files: call files(), then compare the counter.
+     * @return Listing generation.
+     */
+    uint32_t listGeneration() const { return listGen_; }
     /** @brief Whether the listing hit MAX_LIST. @return true if entries may be missing. */
     bool filesTruncated() const { return truncated_; }
     /** @brief Number of files in the current folder. @return Files only, without folders. */
@@ -170,7 +178,7 @@ public:
      */
     String path(const String& nameOrPath) const;
     /**
-     * @brief Deletes a .sid file (stops playback if it is the current file).
+     * @brief Deletes a .sid file (only when uploading is allowed; stops playback if it is the current file).
      * @param nameOrPath File name or full path.
      * @return true if deleted.
      */
@@ -181,8 +189,21 @@ public:
     uint64_t totalSpace();
     /** @brief Whether uploading to the active source is allowed and possible. @return true if allowed. */
     bool uploadAllowed();
-    /** @brief Whether the active source allows deleting files. @return true if allowed. */
+    /** @brief Whether the active source allows deleting files and folders (same rule as upload). @return true if allowed. */
     bool deleteAllowed();
+    /**
+     * @brief Creates a folder in the current folder (only when uploading is allowed).
+     * @param name Folder name (sanitized like file names).
+     * @return "" on success, otherwise an error description.
+     */
+    String makeDir(const String& name);
+    /**
+     * @brief Deletes a folder of the current folder with all its content, without asking
+     *        (only when uploading is allowed). Stops playback if the current file is inside.
+     * @param name Folder name in the current folder.
+     * @return "" on success, otherwise an error description.
+     */
+    String removeDir(const String& name);
     /**
      * @brief Prepares an upload: builds the path of the uploaded file in the current folder.
      *
@@ -212,6 +233,12 @@ public:
      * @return Clean name, "" = not allowed.
      */
     static String sanitizeName(const String& name);
+    /**
+     * @brief Turns any name into a safe folder name (same characters as sanitizeName(), no extension rule).
+     * @param name Name.
+     * @return Clean name, "" = not allowed.
+     */
+    static String sanitizeDirName(const String& name);
     static const size_t MAX_FILE_SIZE = 0x10000 + 0x7C + 2;   ///< Largest accepted .sid file (64 KB + header + load address).
     static const size_t MAX_LIST = 1000;          ///< Maximum number of entries in one folder.
 
@@ -356,4 +383,5 @@ private:
     std::vector<PlayerFile> list_; ///< Cached listing of the current folder.
     bool listValid_;               ///< list_ is up to date.
     bool truncated_;               ///< list_ hit MAX_LIST.
+    uint32_t listGen_ = 0;         ///< Number of times the listing was read (listGeneration()).
 };

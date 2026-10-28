@@ -17,8 +17,9 @@ SID chip** connected to the ESP32.
 - Three file sources with folders: internal flash (LittleFS), SD card, and the HVSC collection
   streamed from the DeepSID portal over the internet.
 - Web panel for phone and PC with two skins (Modern and Commodore 64): file browser, upload,
-  delete, play / pause / stop, subtunes, volume, mute, SID model override.
+  delete, folders (create / delete), play / pause / stop, subtunes, volume, mute, SID model override.
 - Serial console (USB and UART at the same time on ESP32-S3).
+- Optional local panel (ESP32-S3): ILI9341 LCD, rotary encoder and two buttons, `-DUSE_LCD=1` (see [`docs/LCD.md`](docs/LCD.md)).
 - Settings stored in NVS: volume, mute, SID model, active source, folder, last file and subtune
   per source, auto-play after power-on.
 - `sid2wav` tool: the same emulator on a PC, renders `.sid` to `.wav` for testing.
@@ -111,6 +112,7 @@ SID files: High Voltage SID Collection, https://www.hvsc.c64.org/
 | `-DSID_OUTPUT_INTERNAL_DAC` | internal DAC of the classic ESP32 instead of I2S                                                    |
 | `-DPLAYER_SOURCE_SD=1`      | SD card source                                                                                      |
 | `-DPLAYER_SOURCE_DEEPSID=1` | DeepSID internet source (on in the S3 environment)                                                  |
+| `-DUSE_LCD=1`                 | ILI9341 LCD + encoder + buttons, ESP32-S3 only (environment `esp32s3-n16r8-lcd`, [`docs/LCD.md`](docs/LCD.md))       |
 | `-DSID_OVERSAMPLE=2`        | built-in engine only: less oversampling (default 4) if the ESP32 cannot keep up                     |
 
 The active engine and CPU load are shown by the `info` command and on the web page.
@@ -148,6 +150,9 @@ I2S pins, SD card pins and SPI clock, default volume, and the real-SID settings:
 | DeepSid          | `PLAYER_SOURCE_DEEPSID=1` | no (read-only)  | HVSC over the internet, needs a WiFi connection                            |
 
 - Choose the source from the "Source" list on the page; folders are marked with 📁, ".." goes one level up.
+- When the source allows `upload`: the button next to the path creates a folder in the current one
+  (📁+ in Modern, `MD` in Commodore 64) and the button in a folder row deletes it with all its
+  content, without asking (🗑 in Modern, `DEL` in Commodore 64).
 - Next / previous file works within the current folder.
 - An uploaded file goes to the current folder if the source allows it.
 - Large folders are sent to the page in chunks of 100 ("Show more"), at most 1000 entries per folder.
@@ -172,13 +177,158 @@ Adding a source: a value in `enum SourceType`, a class derived from `SidSource`,
 `LOAD"$",8`). The choice is stored in NVS. If the "C64 Pro Mono" font is installed on the
 viewing device, the C64 skin uses it automatically.
 
+Both skins are in Polish (default) and English – switch the language with the "Język" /
+"Language" list; the choice is also stored in NVS (`lang` in `WebSettings.def`). Translations are
+in the `L` dictionary in each page's script; languages are listed in `PlayerWebLangs.h`. Error
+messages coming from the player itself (e.g. "nie ma pliku") stay in Polish.
+
 Adding a skin: copy `PlayerWebPageC64.h` under a new name and rename its array, add a value to
 `enum WebSkin` in `PlayerWebSkins.h` and a line to `WEB_SKINS` in `PlayerWebSkins.cpp`.
 
-HTTP API used by the page (all `GET` except upload): `/api/status`, `/api/list`, `/api/cd?dir=`,
-`/api/sources`, `/api/source`, `/api/play`, `/api/pause`, `/api/resume`, `/api/stop`,
-`/api/song`, `/api/file`, `/api/volume?v=`, `/api/mute`, `/api/model?m=`, `/api/delete`,
-`/api/skins`, `/api/skin?s=`, `/api/langs`, `/api/lang?l=`, `POST /upload`.
+### HTTP API
+
+The page talks to the player only through this API, so you can use it from scripts as well
+(`curl`, Home Assistant, etc.). Code: `lib/PlayerWeb/PlayerWeb.cpp`.
+
+General rules:
+
+- All endpoints are `GET` with query parameters, except `POST /upload`. No authentication.
+- Responses are JSON (`application/json`, UTF-8; strings from SID files are converted from
+  ISO-8859-1).
+- **Commands** return `200 {"ok":true}` on success or `400 {"error":"…"}` on failure. Errors from
+  the panel itself follow the page language, errors from the player are in Polish.
+- **Files** (`file=`) are a name in the current folder of the active source or a full path
+  starting with `/`. Only `.sid` files are accepted.
+- Numeric parameters that are missing count as `0`. An unknown path returns `404` (`text/plain`).
+
+#### Status and listing
+
+| Method | Path                        | Parameters                                    | Response                                   |
+| ------ | --------------------------- | --------------------------------------------- | ------------------------------------------ |
+| GET    | `/`                         | –                                             | HTML page of the current skin; sets the `lang` cookie |
+| GET    | `/api/status`               | –                                             | player status (below)                      |
+| GET    | `/api/list`                 | `offset` (default 0), `count` (1–200, default 100) | a chunk of the current folder listing |
+| GET    | `/api/cd`                   | `dir`: name, `/a/b`, `..` (up) or `/` (root; also when empty) | command result         |
+| GET    | `/api/sources`              | –                                             | compiled-in sources                        |
+| GET    | `/api/source`               | `s`: `flash`, `sd`, `deepsid` (or the `SourceType` number) | command result             |
+
+`/api/status` – fields marked * are present only when a file is loaded (`loaded: true`):
+
+```json
+{"state":"playing","loaded":true,"file":"/Hubbard/Commando.sid",
+ "name":"Commando","author":"Rob Hubbard","released":"1985 Elite",
+ "song":1,"songs":3,"type":"PSID","clock":"PAL","model":"6581","hz":50.1,"ms":12340,
+ "volume":70,"muted":false,"modelSetting":-1,"engine":"reSID","load":38,
+ "source":"sd","dir":"/Hubbard","fileSource":"sd","freeFs":1234567,
+ "skin":"modern","lang":"en"}
+```
+
+| Field                      | Meaning                                                                   |
+| -------------------------- | ------------------------------------------------------------------------- |
+| `state`                    | `playing`, `paused` or `stopped`                                          |
+| `file`, `fileSource`       | full path of the current file and the source it comes from               |
+| `name`, `author`, `released` * | tune information from the file header                                |
+| `song`, `songs` *          | current subtune (from 1) and number of subtunes                           |
+| `type`, `clock`, `model` * | `PSID`/`RSID`, `PAL`/`NTSC`, SID model from the file `6581`/`8580`        |
+| `hz`, `ms` *               | play routine call rate in Hz, playback time of the subtune in ms          |
+| `volume`, `muted`          | volume 0–100, mute on                                                     |
+| `modelSetting`             | SID model setting: `-1` auto (from the file), `0` = 6581, `1` = 8580      |
+| `engine`, `load`           | name of the SID engine, audio task load in %                              |
+| `source`, `dir`            | active source and its current folder                                      |
+| `freeFs`                   | free bytes of the active source (missing for DeepSid)                     |
+| `skin`, `lang`             | current page skin and language                                            |
+
+`/api/list` returns folders first, then `.sid` files, each group sorted alphabetically. A request
+with `offset=0` re-reads local storage (flash, SD); a DeepSid listing is kept until the folder
+changes. Folders have `"dir":true`; `truncated` means the folder has more than 1000 entries.
+
+```json
+{"source":"sd","dir":"/Hubbard","ready":true,"error":"","upload":true,"del":true,
+ "total":42,"truncated":false,"offset":0,
+ "items":[{"name":"Demos","size":0,"dir":true},{"name":"Commando.sid","size":5112}]}
+```
+
+`ready`/`error` tell whether the source works (e.g. no SD card), `upload`/`del` whether uploading,
+deleting and creating/deleting folders are allowed there (both follow the `upload` flag of the source). Get the next chunk with `offset` = the number of entries you
+already have, until it reaches `total`.
+
+`/api/sources`:
+
+```json
+{"current":"sd","sources":[{"id":"flash","name":"Pamiec flash","upload":true,"ready":true},
+ {"id":"sd","name":"Karta SD","upload":true,"ready":true}]}
+```
+
+`/api/source` switches the source even when it is not ready, but then returns `400` with the
+reason (e.g. no card, no WiFi for DeepSid).
+
+#### Playback
+
+| Method | Path          | Parameters                                                       | Action                                                    |
+| ------ | ------------- | ---------------------------------------------------------------- | --------------------------------------------------------- |
+| GET    | `/api/play`   | `file` **or** `index` (file number from 1, folders skipped); `song` (from 1, `0` = default from the file) | loads and plays a file |
+| GET    | `/api/pause`  | –                                                                | pauses when playing, otherwise resumes (toggle)           |
+| GET    | `/api/resume` | –                                                                | resumes; after `stop` restarts the current subtune        |
+| GET    | `/api/stop`   | –                                                                | stops playback                                            |
+| GET    | `/api/song`   | `n` (subtune number) **or** `d=-1` / `d=1`                       | starts a subtune; wraps around at both ends               |
+| GET    | `/api/file`   | `d=-1` / `d=1`                                                   | previous / next file in the current folder (wraps around) |
+
+`/api/song` and `/api/file` without a parameter go forward (any `d` ≥ 0 means next).
+`/api/song` returns an error when no file is loaded.
+
+#### Sound
+
+| Method | Path          | Parameters                            | Action                                                       |
+| ------ | ------------- | ------------------------------------- | ------------------------------------------------------------ |
+| GET    | `/api/volume` | `v`: 0–100 (clamped)                  | sets the volume                                              |
+| GET    | `/api/mute`   | `on=0` / `on=1` (optional)            | sets mute; without `on` toggles it (music keeps playing)     |
+| GET    | `/api/model`  | `m`: `-1` auto, `0` = 6581, `1` = 8580 | sets the SID model and restarts the subtune if one is playing or paused |
+
+#### Files
+
+| Method | Path          | Parameters                    | Action                                                          |
+| ------ | ------------- | ----------------------------- | --------------------------------------------------------------- |
+| GET    | `/api/delete` | `file`                        | deletes a `.sid` file (stops it if it is playing); error `not deleted` when the source does not allow `upload` or the file is missing |
+| GET    | `/api/mkdir`  | `name`                        | creates a folder in the current folder (name cleaned up like file names); only with `upload: true` |
+| GET    | `/api/rmdir`  | `dir`                         | deletes a folder of the current folder **with all its content, without asking** (stops playback inside it); only with `upload: true` |
+| POST   | `/upload`     | `multipart/form-data`, field `file` | uploads a file to the current folder and plays it        |
+
+Upload rules: the active source must allow it (`upload: true` in `/api/list`), the name is
+cleaned up (letters, digits, `.`, `-`, `_`; spaces become `_`; at most 60 characters; must end
+with `.sid`), the file may be at most 64 KB (+ header) and the full path must fit the source
+limit (~63 characters on flash). A file with the same name is replaced. If the uploaded file is
+not a valid SID, it is deleted and the error is returned.
+
+#### Page settings
+
+| Method | Path         | Parameters                                | Response / action                         |
+| ------ | ------------ | ----------------------------------------- | ----------------------------------------- |
+| GET    | `/api/skins` | –                                         | `{"current":"modern","skins":[{"id":"modern","name":"Nowoczesny"},{"id":"c64","name":"Commodore 64"}]}` |
+| GET    | `/api/skin`  | `s`: `modern`, `c64` (or number `0`, `1`) | sets the skin (stored in NVS), reload the page to see it |
+| GET    | `/api/langs` | –                                         | `{"current":"pl","langs":[{"id":"pl","name":"Polski"},{"id":"en","name":"English"}]}` |
+| GET    | `/api/lang`  | `l`: `pl`, `en` (or number `0`, `1`)      | sets the language (stored in NVS)         |
+
+#### Examples
+
+```sh
+curl http://c64sid.local/api/status
+curl "http://c64sid.local/api/source?s=sd"
+curl "http://c64sid.local/api/cd?dir=/MUSICIANS/H/Hubbard_Rob"
+curl "http://c64sid.local/api/list?offset=0&count=50"
+curl "http://c64sid.local/api/play?file=Commando.sid&song=2"
+curl "http://c64sid.local/api/play?index=1"
+curl "http://c64sid.local/api/song?d=1"
+curl "http://c64sid.local/api/volume?v=60"
+curl "http://c64sid.local/api/mute?on=1"
+curl "http://c64sid.local/api/model?m=1"
+curl -F "file=@Commando.sid" http://c64sid.local/upload
+curl "http://c64sid.local/api/delete?file=/Commando.sid"
+curl "http://c64sid.local/api/mkdir?name=Hubbard"
+curl "http://c64sid.local/api/rmdir?dir=Hubbard"
+```
+
+Error example: `curl "http://c64sid.local/api/play?file=x.txt"` →
+`400 {"error":"zla nazwa pliku (dozwolone tylko .sid)"}`.
 
 ## Serial console (115200 baud)
 
@@ -193,6 +343,8 @@ n | next,  b | prev       next / previous subtune      song 4
 vol 70 | + | -            volume               m | mute  mute / unmute
 model 8580                force SID model (auto / 6581 / 8580)
 del 3                     delete a file
+md Hubbard                create a folder in the current one (mkdir)
+rd Hubbard                delete a folder with all its content (rmdir)
 info | ip | tone | ?      status / IP address / 440 Hz test tone / IP + help
 mem | mem save | mem reset  stored settings / save now / defaults
 auto on | off             play the last file after power-on
@@ -225,7 +377,7 @@ void setup() {
 | subtunes | `setSong(n)`, `nextSong()`, `prevSong()`, `restartSong()`                                                                                            |
 | sound    | `setVolume(0-100)`, `volumeUp()`, `volumeDown()`, `setMute()`, `toggleMute()`, `setModel(-1/0/1)`, `setTestTone()`                                   |
 | sources  | `setSource(type)`, `source()`, `sourceInfo()`, `sourceReady()`, `sourceError()`, `activeSource()`                                                    |
-| folders  | `cd(folder)`, `dir()`, `dir(type)`, `setDir(type, folder)`; each source keeps its own folder                                                         |
+| folders  | `cd(folder)`, `dir()`, `dir(type)`, `setDir(type, folder)`, `makeDir(name)`, `removeDir(name)`; each source keeps its own folder                       |
 | files    | `files()` (folders + files), `fileCount()`, `fileName(n)`, `removeFile(name)`, `freeSpace()`, `uploadAllowed()`, `prepareUpload()`, `sanitizeName()` |
 | state    | `status()` (title, author, subtune, time, volume, CPU load...), `state()`, `isPlaying()`, `audioError()`                                             |
 
@@ -266,9 +418,11 @@ existing setting, increase `NVS_VERSION` in `PlayerMemory.h` so the old record i
 | `lib/PlayerMemory/`  | player settings (`PlayerMemory`, list in `PlayerSettings.def`)                                                                                              |
 | `lib/PlayerWeb/`     | example: web panel (`PlayerWeb`, skins in `PlayerWebSkins.h`, pages in `PlayerWebPage*.h`)                                                                  |
 | `lib/PlayerConsole/` | example: serial console (`PlayerConsole`, `DualSerial` for USB + UART)                                                                                      |
+| `lib/PlayerLcd/`     | optional: ILI9341 LCD + encoder + buttons (`PlayerLcd`, `LcdInput`, settings in `LcdSettings.def`), `-DUSE_LCD=1`                                         |
 | `src/main.cpp`       | example: WiFi + Player + PlayerWeb + PlayerConsole                                                                                                          |
 | `include/config.h`   | WiFi, pins, sample rate, volume, real SID                                                                                                                   |
 | `docs/REAL_SID.md`   | real SID wiring guide (English + Polish)                                                                                                                    |
+| `docs/LCD.md`        | LCD, encoder and buttons: wiring, controls (English + Polish)                                                                                               |
 | `tools/sid2wav.cpp`  | the same emulator on a PC:`.sid` → `.wav`                                                                                                                  |
 | `data/`              | `.sid` files uploaded to flash with `pio run -t uploadfs`                                                                                                   |
 
@@ -318,8 +472,9 @@ podłączony do ESP32.
 - Trzy źródła plików z folderami: pamięć flash (LittleFS), karta SD oraz kolekcja HVSC pobierana
   przez internet z portalu DeepSID.
 - Panel WWW dla telefonu i PC z dwiema skórkami (Nowoczesny i Commodore 64): przeglądanie plików,
-  wgrywanie, usuwanie, play / pauza / stop, podutwory, głośność, wyciszenie, wymuszenie modelu SID.
+  wgrywanie, usuwanie, foldery (tworzenie / usuwanie), play / pauza / stop, podutwory, głośność, wyciszenie, wymuszenie modelu SID.
 - Konsola na porcie szeregowym (na ESP32-S3 jednocześnie USB i UART).
+- Opcjonalny panel lokalny (ESP32-S3): wyświetlacz ILI9341, enkoder i dwa przyciski, `-DUSE_LCD=1` (opis w [`docs/LCD.md`](docs/LCD.md)).
 - Ustawienia w NVS: głośność, wyciszenie, model SID, aktywne źródło, folder, ostatni plik
   i podutwór dla każdego źródła, granie po włączeniu zasilania.
 - Narzędzie `sid2wav`: ten sam emulator na PC, zamienia `.sid` na `.wav` do testów.
@@ -411,6 +566,7 @@ Pliki SID: High Voltage SID Collection, https://www.hvsc.c64.org/
 | `-DSID_OUTPUT_INTERNAL_DAC`   | wbudowany DAC klasycznego ESP32 zamiast I2S                                                             |
 | `-DPLAYER_SOURCE_SD=1`        | źródło: karta SD                                                                                     |
 | `-DPLAYER_SOURCE_DEEPSID=1`   | źródło: DeepSID przez internet (włączone w środowisku S3)                                         |
+| `-DUSE_LCD=1`                 | LCD ILI9341 + enkoder + przyciski, tylko ESP32-S3 (środowisko `esp32s3-n16r8-lcd`, [`docs/LCD.md`](docs/LCD.md))  |
 | `-DSID_OVERSAMPLE=2`          | tylko silnik własny: mniejsze nadpróbkowanie (domyślnie 4), gdy ESP32 nie nadąża                   |
 
 Aktywny silnik i obciążenie CPU pokazuje komenda `info` oraz strona WWW.
@@ -450,6 +606,9 @@ prawdziwego SID-a:
 | DeepSid          | `PLAYER_SOURCE_DEEPSID=1` | nie (tylko odczyt)   | HVSC przez internet, wymaga połączenia z WiFi                               |
 
 - Źródło wybierasz z listy „Źródło” na stronie; foldery mają ikonę 📁, „..” to poziom wyżej.
+- Gdy źródło pozwala na `upload`: przycisk obok ścieżki tworzy folder w bieżącym (📁+ w skórce
+  Nowoczesny, `MD` w Commodore 64), a przycisk w wierszu folderu usuwa go z całą zawartością,
+  bez pytania (🗑 w Nowoczesnym, `DEL` w Commodore 64).
 - Następny / poprzedni plik działa w bieżącym folderze.
 - Wgrywany plik trafia do bieżącego folderu, jeśli źródło na to pozwala.
 - Duże foldery są wysyłane na stronę w porcjach po 100 („Pokaż więcej”), najwyżej 1000 pozycji w folderze.
@@ -481,10 +640,151 @@ w skrypcie każdej strony; języki w `PlayerWebLangs.h`. Komunikaty błędów z 
 Nowa skórka: skopiuj `PlayerWebPageC64.h` pod nową nazwą i zmień nazwę tablicy, dopisz wartość
 do `enum WebSkin` w `PlayerWebSkins.h` i linię do `WEB_SKINS` w `PlayerWebSkins.cpp`.
 
-API HTTP używane przez stronę (wszystko `GET` poza wgrywaniem): `/api/status`, `/api/list`,
-`/api/cd?dir=`, `/api/sources`, `/api/source`, `/api/play`, `/api/pause`, `/api/resume`,
-`/api/stop`, `/api/song`, `/api/file`, `/api/volume?v=`, `/api/mute`, `/api/model?m=`,
-`/api/delete`, `/api/skins`, `/api/skin?s=`, `/api/langs`, `/api/lang?l=`, `POST /upload`.
+### API HTTP
+
+Strona rozmawia z odtwarzaczem wyłącznie przez to API, więc można go używać także ze skryptów
+(`curl`, Home Assistant itp.). Kod: `lib/PlayerWeb/PlayerWeb.cpp`.
+
+Zasady ogólne:
+
+- Wszystkie endpointy to `GET` z parametrami w adresie, poza `POST /upload`. Bez logowania.
+- Odpowiedzi są w JSON (`application/json`, UTF-8; napisy z plików SID są zamieniane z
+  ISO-8859-1).
+- **Polecenia** zwracają `200 {"ok":true}` przy powodzeniu albo `400 {"error":"…"}` przy błędzie.
+  Błędy samego panelu są w języku strony, błędy odtwarzacza po polsku.
+- **Pliki** (`file=`) to nazwa w bieżącym folderze aktywnego źródła albo pełna ścieżka od `/`.
+  Przyjmowane są tylko pliki `.sid`.
+- Brakujący parametr liczbowy liczy się jako `0`. Nieznana ścieżka zwraca `404` (`text/plain`).
+
+#### Stan i lista plików
+
+| Metoda | Ścieżka                     | Parametry                                     | Odpowiedź                                  |
+| ------ | --------------------------- | --------------------------------------------- | ------------------------------------------ |
+| GET    | `/`                         | –                                             | strona HTML bieżącej skórki; ustawia ciasteczko `lang` |
+| GET    | `/api/status`               | –                                             | stan odtwarzacza (niżej)                   |
+| GET    | `/api/list`                 | `offset` (domyślnie 0), `count` (1–200, domyślnie 100) | porcja listy bieżącego folderu    |
+| GET    | `/api/cd`                   | `dir`: nazwa, `/a/b`, `..` (wyżej) albo `/` (katalog główny; także gdy pusty) | wynik polecenia |
+| GET    | `/api/sources`              | –                                             | wkompilowane źródła                        |
+| GET    | `/api/source`               | `s`: `flash`, `sd`, `deepsid` (albo numer `SourceType`) | wynik polecenia                 |
+
+`/api/status` – pola oznaczone * są tylko wtedy, gdy plik jest wczytany (`loaded: true`):
+
+```json
+{"state":"playing","loaded":true,"file":"/Hubbard/Commando.sid",
+ "name":"Commando","author":"Rob Hubbard","released":"1985 Elite",
+ "song":1,"songs":3,"type":"PSID","clock":"PAL","model":"6581","hz":50.1,"ms":12340,
+ "volume":70,"muted":false,"modelSetting":-1,"engine":"reSID","load":38,
+ "source":"sd","dir":"/Hubbard","fileSource":"sd","freeFs":1234567,
+ "skin":"modern","lang":"pl"}
+```
+
+| Pole                       | Znaczenie                                                                 |
+| -------------------------- | ------------------------------------------------------------------------- |
+| `state`                    | `playing`, `paused` albo `stopped`                                        |
+| `file`, `fileSource`       | pełna ścieżka bieżącego pliku i źródło, z którego pochodzi                |
+| `name`, `author`, `released` * | informacje o utworze z nagłówka pliku                                 |
+| `song`, `songs` *          | bieżący podutwór (od 1) i liczba podutworów                               |
+| `type`, `clock`, `model` * | `PSID`/`RSID`, `PAL`/`NTSC`, model SID-a z pliku `6581`/`8580`            |
+| `hz`, `ms` *               | częstotliwość wywołań procedury play w Hz, czas odtwarzania podutworu w ms |
+| `volume`, `muted`          | głośność 0–100, wyciszenie                                                |
+| `modelSetting`             | ustawienie modelu SID: `-1` auto (z pliku), `0` = 6581, `1` = 8580        |
+| `engine`, `load`           | nazwa silnika SID, obciążenie zadania audio w %                           |
+| `source`, `dir`            | aktywne źródło i jego bieżący folder                                      |
+| `freeFs`                   | wolne bajty aktywnego źródła (brak dla DeepSid)                           |
+| `skin`, `lang`             | bieżąca skórka i język strony                                             |
+
+`/api/list` zwraca najpierw foldery, potem pliki `.sid`, każda grupa posortowana alfabetycznie.
+Zapytanie z `offset=0` ponownie czyta pamięć lokalną (flash, SD); lista z DeepSid jest
+trzymana do zmiany folderu. Foldery mają `"dir":true`; `truncated` oznacza, że w folderze jest
+więcej niż 1000 pozycji.
+
+```json
+{"source":"sd","dir":"/Hubbard","ready":true,"error":"","upload":true,"del":true,
+ "total":42,"truncated":false,"offset":0,
+ "items":[{"name":"Demos","size":0,"dir":true},{"name":"Commando.sid","size":5112}]}
+```
+
+`ready`/`error` mówią, czy źródło działa (np. brak karty SD), `upload`/`del` – czy wolno w nim
+wgrywać, usuwać oraz tworzyć/usuwać foldery (oba wynikają z flagi `upload` źródła). Kolejną porcję pobierasz z `offset` = liczba już pobranych pozycji, aż do
+`total`.
+
+`/api/sources`:
+
+```json
+{"current":"sd","sources":[{"id":"flash","name":"Pamiec flash","upload":true,"ready":true},
+ {"id":"sd","name":"Karta SD","upload":true,"ready":true}]}
+```
+
+`/api/source` przełącza źródło nawet wtedy, gdy nie jest gotowe, ale zwraca wtedy `400` z
+przyczyną (np. brak karty, brak WiFi dla DeepSid).
+
+#### Odtwarzanie
+
+| Metoda | Ścieżka       | Parametry                                                        | Działanie                                                 |
+| ------ | ------------- | ---------------------------------------------------------------- | --------------------------------------------------------- |
+| GET    | `/api/play`   | `file` **albo** `index` (numer pliku od 1, bez folderów); `song` (od 1, `0` = domyślny z pliku) | wczytuje i odtwarza plik |
+| GET    | `/api/pause`  | –                                                                | pauza, gdy gra, w przeciwnym razie wznowienie (przełącznik) |
+| GET    | `/api/resume` | –                                                                | wznawia; po `stop` uruchamia bieżący podutwór od nowa     |
+| GET    | `/api/stop`   | –                                                                | zatrzymuje odtwarzanie                                    |
+| GET    | `/api/song`   | `n` (numer podutworu) **albo** `d=-1` / `d=1`                    | uruchamia podutwór; po ostatnim jest pierwszy i odwrotnie |
+| GET    | `/api/file`   | `d=-1` / `d=1`                                                   | poprzedni / następny plik w bieżącym folderze (w kółko)   |
+
+`/api/song` i `/api/file` bez parametru idą do przodu (każde `d` ≥ 0 to następny).
+`/api/song` zwraca błąd, gdy żaden plik nie jest wczytany.
+
+#### Dźwięk
+
+| Metoda | Ścieżka       | Parametry                             | Działanie                                                    |
+| ------ | ------------- | ------------------------------------- | ------------------------------------------------------------ |
+| GET    | `/api/volume` | `v`: 0–100 (przycinane)               | ustawia głośność                                             |
+| GET    | `/api/mute`   | `on=0` / `on=1` (opcjonalnie)         | ustawia wyciszenie; bez `on` przełącza (muzyka gra dalej)    |
+| GET    | `/api/model`  | `m`: `-1` auto, `0` = 6581, `1` = 8580 | ustawia model SID i restartuje podutwór, jeśli gra lub jest pauza |
+
+#### Pliki
+
+| Metoda | Ścieżka       | Parametry                     | Działanie                                                       |
+| ------ | ------------- | ----------------------------- | --------------------------------------------------------------- |
+| GET    | `/api/delete` | `file`                        | usuwa plik `.sid` (zatrzymuje go, jeśli gra); błąd `nie usunieto`, gdy źródło nie pozwala na `upload` lub nie ma pliku |
+| GET    | `/api/mkdir`  | `name`                        | tworzy folder w bieżącym folderze (nazwa czyszczona jak nazwy plików); tylko przy `upload: true` |
+| GET    | `/api/rmdir`  | `dir`                         | usuwa folder z bieżącego folderu **z całą zawartością, bez pytania** (zatrzymuje odtwarzanie w nim); tylko przy `upload: true` |
+| POST   | `/upload`     | `multipart/form-data`, pole `file` | wgrywa plik do bieżącego folderu i go odtwarza             |
+
+Zasady wgrywania: aktywne źródło musi na to pozwalać (`upload: true` w `/api/list`), nazwa jest
+czyszczona (litery, cyfry, `.`, `-`, `_`; spacje zamieniane na `_`; najwyżej 60 znaków; musi
+kończyć się na `.sid`), plik może mieć najwyżej 64 KB (+ nagłówek), a cała ścieżka musi
+zmieścić się w limicie źródła (ok. 63 znaki we flashu). Plik o tej samej nazwie jest
+zastępowany. Jeśli wgrany plik nie jest poprawnym SID-em, zostaje usunięty i zwracany jest błąd.
+
+#### Ustawienia strony
+
+| Metoda | Ścieżka      | Parametry                                 | Odpowiedź / działanie                     |
+| ------ | ------------ | ----------------------------------------- | ----------------------------------------- |
+| GET    | `/api/skins` | –                                         | `{"current":"modern","skins":[{"id":"modern","name":"Nowoczesny"},{"id":"c64","name":"Commodore 64"}]}` |
+| GET    | `/api/skin`  | `s`: `modern`, `c64` (albo numer `0`, `1`) | ustawia skórkę (zapis w NVS), widać ją po przeładowaniu strony |
+| GET    | `/api/langs` | –                                         | `{"current":"pl","langs":[{"id":"pl","name":"Polski"},{"id":"en","name":"English"}]}` |
+| GET    | `/api/lang`  | `l`: `pl`, `en` (albo numer `0`, `1`)      | ustawia język (zapis w NVS)               |
+
+#### Przykłady
+
+```sh
+curl http://c64sid.local/api/status
+curl "http://c64sid.local/api/source?s=sd"
+curl "http://c64sid.local/api/cd?dir=/MUSICIANS/H/Hubbard_Rob"
+curl "http://c64sid.local/api/list?offset=0&count=50"
+curl "http://c64sid.local/api/play?file=Commando.sid&song=2"
+curl "http://c64sid.local/api/play?index=1"
+curl "http://c64sid.local/api/song?d=1"
+curl "http://c64sid.local/api/volume?v=60"
+curl "http://c64sid.local/api/mute?on=1"
+curl "http://c64sid.local/api/model?m=1"
+curl -F "file=@Commando.sid" http://c64sid.local/upload
+curl "http://c64sid.local/api/delete?file=/Commando.sid"
+curl "http://c64sid.local/api/mkdir?name=Hubbard"
+curl "http://c64sid.local/api/rmdir?dir=Hubbard"
+```
+
+Przykład błędu: `curl "http://c64sid.local/api/play?file=x.txt"` →
+`400 {"error":"zla nazwa pliku (dozwolone tylko .sid)"}`.
 
 ## Komendy przez port szeregowy (115200)
 
@@ -499,6 +799,8 @@ n | next,  b | prev       następny / poprzedni podutwór    song 4
 vol 70 | + | -            głośność             m | mute  wycisz / włącz
 model 8580                wymuś model SID (auto / 6581 / 8580)
 del 3                     usuń plik
+md Hubbard                utwórz folder w bieżącym (mkdir)
+rd Hubbard                usuń folder z całą zawartością (rmdir)
 info | ip | tone | ?      stan / adres IP / ton testowy 440 Hz / IP + pomoc
 mem | mem save | mem reset  zapamiętane ustawienia / zapisz teraz / domyślne
 auto on | off             graj ostatni plik po włączeniu zasilania
@@ -531,7 +833,7 @@ void setup() {
 | podutwory   | `setSong(n)`, `nextSong()`, `prevSong()`, `restartSong()`                                                                                             |
 | dźwięk    | `setVolume(0-100)`, `volumeUp()`, `volumeDown()`, `setMute()`, `toggleMute()`, `setModel(-1/0/1)`, `setTestTone()`                                    |
 | źródła   | `setSource(typ)`, `source()`, `sourceInfo()`, `sourceReady()`, `sourceError()`, `activeSource()`                                                      |
-| foldery     | `cd(folder)`, `dir()`, `dir(typ)`, `setDir(typ, folder)`; każde źródło pamięta swój folder                                                      |
+| foldery     | `cd(folder)`, `dir()`, `dir(typ)`, `setDir(typ, folder)`, `makeDir(nazwa)`, `removeDir(nazwa)`; każde źródło pamięta swój folder                  |
 | pliki       | `files()` (foldery + pliki), `fileCount()`, `fileName(n)`, `removeFile(nazwa)`, `freeSpace()`, `uploadAllowed()`, `prepareUpload()`, `sanitizeName()` |
 | stan        | `status()` (tytuł, autor, utwór, czas, głośność, obciążenie CPU...), `state()`, `isPlaying()`, `audioError()`                                 |
 
@@ -573,9 +875,11 @@ a stary zapis zostanie pominięty.
 | `lib/PlayerMemory/`  | ustawienia odtwarzacza (`PlayerMemory`, lista w `PlayerSettings.def`)                                                                                        |
 | `lib/PlayerWeb/`     | przykład: panel WWW (`PlayerWeb`, skórki w `PlayerWebSkins.h`, strony w `PlayerWebPage*.h`)                                                                |
 | `lib/PlayerConsole/` | przykład: konsola szeregowa (`PlayerConsole`, `DualSerial` dla USB + UART)                                                                                  |
+| `lib/PlayerLcd/`     | opcjonalnie: LCD ILI9341 + enkoder + przyciski (`PlayerLcd`, `LcdInput`, ustawienia w `LcdSettings.def`), `-DUSE_LCD=1`                                   |
 | `src/main.cpp`       | przykład: WiFi + Player + PlayerWeb + PlayerConsole                                                                                                         |
 | `include/config.h`   | WiFi, piny, częstotliwość próbkowania, głośność, prawdziwy SID                                                                                       |
 | `docs/REAL_SID.md`   | instrukcja podłączenia prawdziwego SID-a                                                                                                                   |
+| `docs/LCD.md`        | LCD, enkoder i przyciski: podłączenie, sterowanie                                                                                                           |
 | `tools/sid2wav.cpp`  | ten sam emulator na PC:`.sid` → `.wav`                                                                                                                      |
 | `data/`              | pliki`.sid` wgrywane do flash przez `pio run -t uploadfs`                                                                                                    |
 

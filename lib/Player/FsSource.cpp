@@ -32,6 +32,23 @@ bool FsSource::isDir(const String& path) {
     return d && d.isDirectory();
 }
 
+bool FsSource::removeDir(const String& path) {
+    // collect the names first and close the folder - deleting while iterating is not safe
+    std::vector<String> files, dirs;
+    {
+        File d = fs_.open(path);
+        if (!d || !d.isDirectory()) return false;
+        for (File f = d.openNextFile(); f; f = d.openNextFile()) {
+            String full = SourcePath::join(path, SourcePath::baseName(f.name()));
+            (f.isDirectory() ? dirs : files).push_back(full);
+        }
+    }
+    bool ok = true;
+    for (const String& f : files) ok = fs_.remove(f) && ok;
+    for (const String& d : dirs) ok = removeDir(d) && ok;
+    return fs_.rmdir(path) && ok;
+}
+
 String FsSource::read(const String& path, uint8_t*& buf, size_t& len, size_t maxLen) {
     buf = nullptr;
     File f = fs_.open(path, "r");

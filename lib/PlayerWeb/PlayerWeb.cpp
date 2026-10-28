@@ -233,6 +233,8 @@ void PlayerWeb::setupRoutes() {
     server_.on("/api/delete", HTTP_GET, [this] {
         sendResult(player_.removeFile(server_.arg("file")) ? String("") : String(tr("nie usunieto", "not deleted")));
     });
+    server_.on("/api/mkdir", HTTP_GET, [this] { sendResult(player_.makeDir(server_.arg("name"))); });
+    server_.on("/api/rmdir", HTTP_GET, [this] { sendResult(player_.removeDir(server_.arg("dir"))); });
     server_.on("/upload", HTTP_POST, [this] { handleUploadDone(); }, [this] { handleUploadData(); });
     server_.onNotFound([this] { server_.send(404, "text/plain", "404"); });
 }

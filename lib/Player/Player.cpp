@@ -188,6 +188,7 @@ const std::vector<PlayerFile>& Player::files() {
         return strcasecmp(a.name.c_str(), b.name.c_str()) < 0;
     });
     listValid_ = true;
+    listGen_++;
     return list_;
 }
 
@@ -220,7 +221,7 @@ int Player::fileIndex(const String& nameOrPath) {
 
 bool Player::removeFile(const String& nameOrPath) {
     String p = path(nameOrPath);
-    if (!SourcePath::valid(p) || !SourcePath::isSid(p)) return false;
+    if (!deleteAllowed() || !SourcePath::valid(p) || !SourcePath::isSid(p)) return false;
     return removePath(p);
 }
 
@@ -239,8 +240,28 @@ bool Player::uploadAllowed() {
     return sourceInfo().upload && activeSource().canWrite() && sourceReady();
 }
 
-bool Player::deleteAllowed() {
-    return activeSource().canWrite() && sourceReady();
+bool Player::deleteAllowed() { return uploadAllowed(); }
+
+String Player::makeDir(const String& name) {
+    if (!uploadAllowed()) return String("zapis do: ") + sourceInfo().name + " jest wylaczony";
+    String clean = sanitizeDirName(name);
+    if (!clean.length()) return "zla nazwa folderu";
+    String full = SourcePath::join(dir(), clean);
+    if (full.length() > activeSource().maxPathLength())
+        return "za dluga sciezka (max " + String(activeSource().maxPathLength()) + " znakow)";
+    if (activeSource().isDir(full)) return "folder " + clean + " juz istnieje";
+    listValid_ = false;
+    return activeSource().makeDir(full) ? "" : "nie mozna utworzyc " + full;
+}
+
+String Player::removeDir(const String& name) {
+    if (!deleteAllowed()) return String("zapis do: ") + sourceInfo().name + " jest wylaczony";
+    String full = path(name);
+    if (name.indexOf('/') >= 0 || !SourcePath::valid(full) || full == "/") return "zla nazwa folderu";
+    if (!activeSource().isDir(full)) return "nie ma folderu " + full;
+    if (fileSource_ == source_ && file_.startsWith(full + "/")) stop();
+    listValid_ = false;
+    return activeSource().removeDir(full) ? "" : "nie usunieto calego folderu " + full;
 }
 
 String Player::prepareUpload(const String& fileName, String& p) {
@@ -259,6 +280,18 @@ String Player::prepareUpload(const String& fileName, String& p) {
 fs::File Player::openWrite(const String& p) {
     listValid_ = false;
     return activeSource().openWrite(p);
+}
+
+String Player::sanitizeDirName(const String& name) {
+    String out;
+    for (size_t i = 0; i < name.length(); i++) {
+        char c = name[i];
+        if (isalnum((unsigned char)c) || c == '.' || c == '-' || c == '_') out += c;
+        else if (c == ' ') out += '_';
+    }
+    if (out.length() > 60) out = out.substring(0, 60);
+    if (!out.length() || out[0] == '.') return "";
+    return out;
 }
 
 String Player::sanitizeName(const String& name) {
