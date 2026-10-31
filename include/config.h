@@ -63,6 +63,15 @@
 #define SD_PIN_MISO    SD_DEF_MISO       ///< SD card MISO pin.
 #endif
 #define SD_SPI_FREQ    20000000          ///< SD SPI clock in Hz; lower it to 4000000 if the card fails on long wires.
+// FatFs drive number of the SD card, used by the fast folder listing (FatFs is called directly,
+// so it needs the drive number "0:", "1:"... instead of the "/sd" path). Every FAT drive gets
+// the first free number when it is mounted. The flash uses LittleFS (not FAT), so the SD card
+// is the only FAT drive and gets 0. Change it only if another FAT drive is mounted before the
+// card (FFat in flash, a second SD card, USB storage). If the fast listing fails, the slower
+// standard listing is used, so a wrong number only makes listing slower (or shows that other drive).
+#ifndef SD_FAT_DRIVE
+#define SD_FAT_DRIVE   0                 ///< FatFs drive number of the SD card (0 = first FAT drive).
+#endif
 
 // --- Real SID chip (engine -DSID_ENGINE=2 in platformio.ini) ---
 // Wiring diagram: docs/REAL_SID.md

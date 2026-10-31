@@ -42,6 +42,7 @@ struct PlayerConfig {
     bool formatFsIfFailed = true; ///< Format LittleFS when it cannot be mounted.
     int sdCs = 5, sdSck = 18, sdMiso = 19, sdMosi = 23;   ///< SD card SPI pins (used when -DPLAYER_SOURCE_SD=1).
     uint32_t sdFreq = 20000000;   ///< SD card SPI clock in Hz.
+    uint8_t sdFatDrive = 0;       ///< FatFs drive number of the SD card (fast folder listing).
 };
 // The built-in DAC of the classic ESP32 (GPIO25/26) is enabled with the -DSID_OUTPUT_INTERNAL_DAC flag.
 

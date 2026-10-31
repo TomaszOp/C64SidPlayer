@@ -105,6 +105,7 @@ void setup() {
     cfg.sdMiso = SD_PIN_MISO;
     cfg.sdMosi = SD_PIN_MOSI;
     cfg.sdFreq = SD_SPI_FREQ;
+    cfg.sdFatDrive = SD_FAT_DRIVE;
     if (!player.begin(cfg)) Console.println("Uwaga: problem z wyjsciem audio albo pamiecia plikow (LittleFS)");
     Console.printf("Silnik SID: %s, audio: %s\n", player.status().engine, player.audioError());
 

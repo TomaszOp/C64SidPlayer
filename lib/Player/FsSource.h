@@ -149,6 +149,15 @@ private:
     bool mount();
     /** @brief Marks the card as removed and unmounts it. */
     void lost();
+    /**
+     * @brief Fast listing straight through FatFs (drive cfg.sdFatDrive): name, size and type
+     *        come from one directory pass, without opening every file.
+     * @param dir        Folder path.
+     * @param out        Receives the entries (cleared first).
+     * @param maxEntries Maximum number of entries.
+     * @return false if FatFs cannot read the folder (the caller then uses FsSource::list()).
+     */
+    bool listFat(const String& dir, std::vector<SourceEntry>& out, size_t maxEntries);
     const PlayerConfig* cfg_ = nullptr;   ///< Configuration passed to begin().
     bool mounted_ = false;     ///< Card mounted.
     bool spiReady_ = false;    ///< SPI bus already started.

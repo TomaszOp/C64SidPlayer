@@ -8,9 +8,22 @@
 #if PLAYER_SOURCE_SD
 #include <SPI.h>
 #include <SD.h>
+#include "ff.h"
 #endif
 
 // ---------------------------------------------------------------- FsSource
+
+/**
+ * @brief Whether a folder entry is shown: no hidden/system entries, only folders and .sid files.
+ * @param name  Entry name (without the path).
+ * @param isDir Whether it is a folder.
+ * @return true if the entry goes to the list.
+ */
+static bool showEntry(const String& name, bool isDir) {
+    // pliki ukryte i systemowe (np. "._plik.sid" z macOS, "System Volume Information")
+    if (!name.length() || name[0] == '.' || name == "System Volume Information") return false;
+    return isDir || SourcePath::isSid(name);
+}
 
 bool FsSource::list(const String& dir, std::vector<SourceEntry>& out, size_t maxEntries) {
     out.clear();
@@ -18,10 +31,8 @@ bool FsSource::list(const String& dir, std::vector<SourceEntry>& out, size_t max
     if (!d || !d.isDirectory()) return false;
     for (File f = d.openNextFile(); f && out.size() < maxEntries; f = d.openNextFile()) {
         String name = SourcePath::baseName(f.name());
-        // pliki ukryte i systemowe (np. "._plik.sid" z macOS, "System Volume Information")
-        if (!name.length() || name[0] == '.' || name == "System Volume Information") continue;
         bool isDir = f.isDirectory();
-        if (!isDir && !SourcePath::isSid(name)) continue;
+        if (!showEntry(name, isDir)) continue;
         out.push_back({name, isDir ? 0 : size_t(f.size()), isDir});
     }
     return true;
@@ -109,9 +120,28 @@ bool SdSource::ready() {
 
 bool SdSource::list(const String& dir, std::vector<SourceEntry>& out, size_t maxEntries) {
     if (!ready()) { out.clear(); return false; }
+    if (listFat(dir, out, maxEntries)) return true;
+    // wolniejsza metoda, gdy FatFs zawiedzie (np. zly SD_FAT_DRIVE)
     if (FsSource::list(dir, out, maxEntries)) return true;
     if (!SD.open("/")) lost();          // nie da sie otworzyc nawet katalogu glownego - karta wyjeta
     return false;
+}
+
+bool SdSource::listFat(const String& dir, std::vector<SourceEntry>& out, size_t maxEntries) {
+    out.clear();
+    String path = String(cfg_->sdFatDrive) + ":" + dir;   // np. "0:/Hubbard"
+    FF_DIR d;
+    if (f_opendir(&d, path.c_str()) != FR_OK) return false;
+    FILINFO fi;
+    // jedno przejscie po katalogu: nazwa, rozmiar i typ bez otwierania plikow
+    while (out.size() < maxEntries && f_readdir(&d, &fi) == FR_OK && fi.fname[0]) {
+        String name = fi.fname;
+        bool isDir = fi.fattrib & AM_DIR;
+        if (!showEntry(name, isDir)) continue;
+        out.push_back({name, isDir ? 0 : size_t(fi.fsize), isDir});
+    }
+    f_closedir(&d);
+    return true;
 }
 
 String SdSource::read(const String& path, uint8_t*& buf, size_t& len, size_t maxLen) {
