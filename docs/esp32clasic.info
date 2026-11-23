@@ -1,0 +1,103 @@
+ESP32 classic (ESP32-WROOM-32 / DevKit V1) - support notes
+===========================================================
+
+Status: assessment based on the code (not compiled, not measured on hardware).
+
+Works without changes (pio run -e esp32dev)
+-------------------------------------------
+- The esp32dev environment already exists in platformio.ini, the code has
+  separate default pins for the classic ESP32.
+- Audio: I2S DAC on BCK 26, WS 25, DATA 22, or the built-in 8-bit DAC
+  (-DSID_OUTPUT_INTERNAL_DAC, GPIO25) - lower quality, no DAC board needed.
+- SD card: CS 5, MOSI 23, SCK 18, MISO 19 - uncomment -DPLAYER_SOURCE_SD=1.
+- Web panel, serial console (DualSerial handles the missing native USB),
+  NVS settings, flash / LittleFS.
+- Real SID chip (engine 2): pins 13/14/27/21/32/33, no collision with I2S or SD.
+
+CPU load
+--------
+- ESP32 and ESP32-S3 both run at 240 MHz; the S3 (LX7) is only slightly faster.
+- Plain reSID should fit with headroom (about 38% on the S3; on the ESP32 expect
+  a few to a dozen percentage points more - not measured).
+- reSID with interpolation (SID_RESID_INTERPOLATE) is too slow on both chips.
+- The real load is shown by the "info" command and on the web page.
+
+Main limitation: RAM (WROOM-32 has no PSRAM)
+--------------------------------------------
+- About 150-200 KB of heap is left after WiFi starts.
+- DeepSID is the most demanding source: HTTPS (TLS) takes about 40-50 KB,
+  a folder list of up to 1000 entries (MAX_LIST) takes tens of KB, and loading
+  a .sid file needs up to 64 KB in one contiguous block.
+- With large folders (e.g. /MUSICIANS) and long run time, allocation errors are
+  possible. SD and flash sources are safe.
+- Possible fixes: a lower MAX_LIST for the ESP32, or a WROVER board with PSRAM.
+
+LCD (ILI9341 + encoder + buttons) - needs changes
+-------------------------------------------------
+- config.h deliberately stops the build on the ESP32 with #error.
+- The current pins (1, 39-42) do not exist on the ESP32 or are unsuitable
+  (GPIO1 = UART TX, 34-39 = input only, no internal pull-ups).
+- Needed:
+  * a new environment esp32dev-lcd,
+  * the display on HSPI, e.g. SCLK 14, MOSI 13, CS 15, DC 4
+    (collides with the real SID pins 13/14 - LCD + real SID together
+    need a different pin map),
+  * encoder and buttons e.g. on 32, 33, 21, 16, 17
+    (16/17 are used by PSRAM on WROVER modules; 34-39 need external pull-ups),
+  * remove the #error in config.h.
+- The 320x60 16-bit sprite (about 38 KB) fits in RAM.
+
+
+------------------------------------------------------------------------------
+POLSKI
+------------------------------------------------------------------------------
+
+Klasyczny ESP32 (ESP32-WROOM-32 / DevKit V1) - notatki o obsludze
+=================================================================
+
+Stan: ocena na podstawie kodu (bez kompilacji i bez pomiarow na sprzecie).
+
+Dziala bez zmian (pio run -e esp32dev)
+--------------------------------------
+- Srodowisko esp32dev juz jest w platformio.ini, kod ma osobne domyslne piny
+  dla klasycznego ESP32.
+- Dzwiek: DAC I2S na BCK 26, WS 25, DATA 22 albo wbudowany 8-bitowy DAC
+  (-DSID_OUTPUT_INTERNAL_DAC, GPIO25) - gorsza jakosc, ale bez plytki DAC.
+- Karta SD: CS 5, MOSI 23, SCK 18, MISO 19 - odkomentuj -DPLAYER_SOURCE_SD=1.
+- Panel WWW, konsola (DualSerial sam obsluguje brak natywnego USB),
+  ustawienia w NVS, flash / LittleFS.
+- Prawdziwy SID (silnik 2): piny 13/14/27/21/32/33, nie koliduja z I2S ani SD.
+
+Obciazenie CPU
+--------------
+- ESP32 i ESP32-S3 maja ten sam zegar 240 MHz, S3 (LX7) jest tylko troche szybszy.
+- Zwykly reSID powinien sie zmiescic z zapasem (na S3 ok. 38%, na ESP32
+  spodziewane kilka do kilkunastu punktow procentowych wiecej - niezmierzone).
+- reSID z interpolacja (SID_RESID_INTERPOLATE) jest za wolny na obu ukladach.
+- Prawdziwe obciazenie pokazuje polecenie "info" i strona WWW.
+
+Glowne ograniczenie: RAM (WROOM-32 nie ma PSRAM)
+------------------------------------------------
+- Po starcie WiFi zostaje ok. 150-200 KB sterty.
+- Najbardziej wymagajacy jest DeepSID: HTTPS (TLS) bierze ok. 40-50 KB,
+  lista folderu do 1000 pozycji (MAX_LIST) kilkadziesiat KB, a wczytanie pliku
+  .sid potrzebuje do 64 KB w jednym kawalku.
+- Przy duzych folderach (np. /MUSICIANS) i dluzszej pracy moga zdarzac sie bledy
+  alokacji. Zrodla SD i flash sa bezpieczne.
+- Mozliwe poprawki: mniejszy MAX_LIST dla ESP32 albo plytka WROVER z PSRAM.
+
+LCD (ILI9341 + enkoder + przyciski) - wymaga zmian
+--------------------------------------------------
+- config.h celowo blokuje kompilacje na ESP32 przez #error.
+- Obecne piny (1, 39-42) na ESP32 nie istnieja albo sie nie nadaja
+  (GPIO1 = UART TX, 34-39 = tylko wejscia, bez wewnetrznych podciagniec).
+- Potrzebne:
+  * nowe srodowisko esp32dev-lcd,
+  * wyswietlacz na HSPI, np. SCLK 14, MOSI 13, CS 15, DC 4
+    (koliduje z pinami prawdziwego SID 13/14 - LCD i prawdziwy SID naraz
+    wymagaja innego przydzialu pinow),
+  * enkoder i przyciski np. na 32, 33, 21, 16, 17
+    (16/17 zajmuje PSRAM w modulach WROVER; 34-39 wymagaja zewnetrznych
+    rezystorow podciagajacych),
+  * usuniecie #error w config.h.
+- Bufor ekranu 320x60 16-bit (ok. 38 KB) miesci sie w RAM.

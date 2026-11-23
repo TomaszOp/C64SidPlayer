@@ -15,7 +15,7 @@
 #include "secrets.example.h"
 #endif
 #define AP_SSID        "ESP32-SID"       ///< Name of the fallback access point.
-#define AP_PASSWORD    "commodore64"     ///< Password of the fallback access point.
+#define AP_PASSWORD    ""     ///< Password of the fallback access point.
 #define HOSTNAME       "c64sid"          ///< mDNS / DHCP host name: http://c64sid.local
 
 // --- Audio ---
